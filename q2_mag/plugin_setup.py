@@ -50,6 +50,7 @@ import q2_mag
 from q2_types.feature_data_mag import MAG
 from q2_types.per_sample_sequences import AlignmentMap
 from q2_types.reference_db import ReferenceDB
+from q2_types.genome_data import GenomeData, Proteins
 
 from q2_mag import __version__
 
@@ -72,6 +73,7 @@ plugin = Plugin(
 )
 
 importlib.import_module("q2_mag.metabat2")
+importlib.import_module("q2_mag.das_tool")
 
 partition_params = {"num_partitions": Int % Range(1, None)}
 partition_param_descriptions = {
@@ -611,6 +613,73 @@ plugin.methods.register_function(
     citations=[
         citations["pan_deep_2022"],
         citations["pan_semibin2_2023"],
+    ],
+)
+
+
+plugin.methods.register_function(
+    function=q2_mag.das_tool.refine_bins_das_tool,
+    inputs={
+        "bins": List[SampleData[MAGs]],
+        "contigs": SampleData[Contigs],
+        "proteins": GenomeData[Proteins],
+    },
+    parameters={
+        "labels": Str,
+        # NOTE: usearch as a search engine is disabled until added as a dependency
+        "search_engine": Str % Choices("diamond", "blastp"),  # TODO: add usearch
+        "score_threshold": Float % Range(0.0, 1.0),
+        "duplicate_penalty": Float % Range(0.0, 3.0),
+        "megabin_penalty": Float % Range(0.0, 3.0),
+        "max_iter_post_threshold": Int % Range(0, None),
+        "threads": Int % Range(0, None),
+        "debug": Bool,
+    },
+    outputs={
+        "refined_bins": SampleData[MAGs],
+    },
+    input_descriptions={
+        "bins": "Bins produced by a metagenomic binning tool.",
+        "contigs": (
+            "Contig sequences used for metagenomic binning. These sequences must "
+            "correspond to the contigs that were used to generate the bins."
+        ),
+        "proteins": (
+            "Predicted protein sequences derived from the input contigs using "
+            "Prodigal."
+        ),
+    },
+    parameter_descriptions={
+        "labels": (
+            "Comma-separated list of metagenomic binning methods names. "
+            "The number of labels must match the number of bins. "
+            "If unspecified, binning methods will be labeled binning_1, binning_2,..."
+            "Duplicate label names are not allowed."
+            "For exampe: `metabat,semibin`."
+        ),
+        "search_engine": "Engine used for single copy gene identification.",
+        "score_threshold": (
+            "Score threshold until selection algorithm will keep selecting bins."
+        ),
+        "duplicate_penalty": (
+            "Penalty for duplicate single copy genes per bin (weight b)."
+        ),
+        "megabin_penalty": "Penalty for megabins (weight c).",
+        "max_iter_post_threshold": (
+            "Maximum number of iterations after reaching score threshold."
+        ),
+        "threads": "Number of threads to use (0: use all cores).",
+        "debug": "Debug output.",
+    },
+    output_descriptions={
+        "refined_bins": "The binned contigs created by DAS Tool.",
+    },
+    name="Refine bins produced by 2+ binning methods using DAS Tool.",
+    description=(
+        "This method uses DAS Tool to integrate multiple binning prediction to "
+        "produce an optimized, non-redundant set of bins."),
+    citations=[
+        citations["sieber2018recovery"],
     ],
 )
 

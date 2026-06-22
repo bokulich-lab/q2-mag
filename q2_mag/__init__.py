@@ -6,7 +6,7 @@
 #
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
-from . import abundance, busco, dereplication, filtering, metabat2, utils, semibin2
+from . import abundance, busco, dereplication, filtering, metabat2, utils, semibin2, das_tool
 
 try:
     from ._version import __version__
@@ -16,6 +16,7 @@ except ModuleNotFoundError:
 __all__ = [
     "abundance",
     "busco",
+    "das_tool",
     "dereplication",
     "filtering",
     "metabat2",
