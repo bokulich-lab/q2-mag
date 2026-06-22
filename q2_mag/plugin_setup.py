@@ -653,9 +653,9 @@ plugin.methods.register_function(
         "labels": (
             "Comma-separated list of metagenomic binning methods names. "
             "The number of labels must match the number of bins. "
-            "If unspecified, binning methods will be labeled binning_1, binning_2,..."
-            "Duplicate label names are not allowed."
-            "For exampe: `metabat,semibin`."
+            "If unspecified, binning methods will be labeled binning_1, binning_2, ... "
+            "Duplicate label names are not allowed. "
+            "For example: `metabat,semibin`."
         ),
         "search_engine": "Engine used for single copy gene identification.",
         "score_threshold": (
