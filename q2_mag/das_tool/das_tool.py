@@ -114,6 +114,7 @@ def _run_das_tool(
         "--outputbasename",
         output_prefix,
         "--write_bins",
+        "--write_bin_evals",
     ]
 
     if proteins_fp is not None:
@@ -122,7 +123,11 @@ def _run_das_tool(
     cmd.extend(common_args)
     run_command(cmd, verbose=True)
 
-    return f"{output_prefix}_DASTool_bins", f"{output_prefix}_DASTool_summary.tsv"
+    return (
+        f"{output_prefix}_DASTool_bins",
+        f"{output_prefix}_DASTool_summary.tsv",
+        f"{output_prefix}_allBins.eval"
+    )
 
 
 def _collect_refined_bins(sample_id, das_tool_bins_dir, refined_bins):
@@ -142,9 +147,12 @@ def _collect_refined_bins(sample_id, das_tool_bins_dir, refined_bins):
 def _append_summary(sample_id, summary, summaries=None):
     summary_df = pd.read_csv(summary, sep="\t", dtype=SUMMARY_DTYPES)
 
-    summary_df.insert(0, "sample-id", str(sample_id))
-    summary_df = summary_df.set_index("sample-id")
-    summary_df.index.name = "id"
+    summary_df.insert(0, "sample_id", str(sample_id))
+    start = 0 if summaries is None else len(summaries)
+    summary_df.index = pd.Index(
+        [str(idx) for idx in range(start, start + len(summary_df))],
+        name="id",
+    )
 
     if summaries is None:
         return summary_df
@@ -197,12 +205,13 @@ def _refine_bins_das_tool(
     sample_ids = _get_sample_ids(contigs, *bins)
     sample_proteins = _get_sample_proteins(proteins)
     concatenated_summary = None
+    concatenated_evaluation = None
     refined_bins = MultiFASTADirectoryFormat()
     num_refined_bins = 0
 
     with tempfile.TemporaryDirectory() as tmp:
         for sample_id in sample_ids:
-            das_tool_bins_dir, summary = _run_das_tool(
+            das_tool_bins_dir, summary, evaluation = _run_das_tool(
                 sample_id=sample_id,
                 bins=bins,
                 contigs_fp=contigs.sample_dict()[sample_id],
@@ -217,13 +226,20 @@ def _refine_bins_das_tool(
             concatenated_summary = _append_summary(
                 sample_id, summary, concatenated_summary
             )
+            concatenated_evaluation = _append_summary(
+                sample_id, evaluation, concatenated_evaluation
+            )
 
     if num_refined_bins == 0:
         raise ValueError(
             "No refined MAGs were formed by DAS Tool, please check your inputs."
         )
 
-    return refined_bins, rachis.Metadata(concatenated_summary)
+    return (
+        refined_bins,
+        rachis.Metadata(concatenated_summary),
+        rachis.Metadata(concatenated_evaluation)
+    )
 
 
 def refine_bins_das_tool(
@@ -238,7 +254,7 @@ def refine_bins_das_tool(
     max_iter_post_threshold: int = 10,
     threads: int = 1,
     debug: bool | None = None,
-) -> (MultiFASTADirectoryFormat, rachis.Metadata):
+) -> (MultiFASTADirectoryFormat, rachis.Metadata, rachis.Metadata):
     kwargs = {
         k: v for k, v in locals().items() if k not in ["bins", "contigs", "proteins", "labels"]
     }

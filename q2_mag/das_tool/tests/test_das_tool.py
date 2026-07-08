@@ -55,7 +55,11 @@ class TestDASTool(TestPluginBase):
             summary2 = os.path.join(tempdir, "sample2_summary.tsv")
 
             pd.DataFrame(
-                {"bin": ["metabat.1"], "bin_set": ["metabat"], "bin_score": ["1"]}
+                {
+                    "bin": ["metabat.1", "metabat.2"],
+                    "bin_set": ["metabat", "metabat"],
+                    "bin_score": ["1", "0.8"],
+                }
             ).to_csv(summary1, sep="\t", index=False)
             pd.DataFrame(
                 {"bin": ["semibin.1"], "bin_set": ["semibin"], "bin_score": ["0.9"]}
@@ -65,16 +69,24 @@ class TestDASTool(TestPluginBase):
             summaries = _append_summary("sample2", summary2, summaries)
 
         self.assertEqual(summaries.index.name, "id")
-        self.assertEqual(list(summaries.index), ["sample1", "sample2"])
+        self.assertEqual(list(summaries.index), ["0", "1", "2"])
         self.assertEqual(
             summaries.to_dict(orient="records"),
             [
                 {
+                    "sample_id": "sample1",
                     "bin": "metabat.1",
                     "bin_set": "metabat",
                     "bin_score": 1.0,
                 },
                 {
+                    "sample_id": "sample1",
+                    "bin": "metabat.2",
+                    "bin_set": "metabat",
+                    "bin_score": 0.8,
+                },
+                {
+                    "sample_id": "sample2",
                     "bin": "semibin.1",
                     "bin_set": "semibin",
                     "bin_score": 0.9,
@@ -96,10 +108,13 @@ class TestDASTool(TestPluginBase):
             pd.DataFrame(
                 {"bin": ["refined"], "bin_set": ["DASTool"], "bin_score": ["1"]}
             ).to_csv(f"{output_prefix}_DASTool_summary.tsv", sep="\t", index=False)
+            pd.DataFrame(
+                {"bin": ["input"], "bin_set": ["metabat"], "bin_score": ["0.9"]}
+            ).to_csv(f"{output_prefix}_allBins.eval", sep="\t", index=False)
 
         subp_run.side_effect = _mock_das_tool
 
-        obs, summary = refine_bins_das_tool(
+        obs, summary, input_bins_evaluation = refine_bins_das_tool(
             bins=[bins, bins],
             contigs=contigs,
             search_engine="diamond",
@@ -109,12 +124,23 @@ class TestDASTool(TestPluginBase):
         )
 
         self.assertIsInstance(obs, MultiFASTADirectoryFormat)
-        self.assertEqual(list(summary.to_dataframe().index), ["sample1", "sample2"])
+        self.assertEqual(list(summary.to_dataframe().index), ["0", "1"])
+        self.assertEqual(
+            list(summary.to_dataframe()["sample_id"]), ["sample1", "sample2"]
+        )
+        self.assertEqual(
+            list(input_bins_evaluation.to_dataframe().index), ["0", "1"]
+        )
+        self.assertEqual(
+            list(input_bins_evaluation.to_dataframe()["sample_id"]),
+            ["sample1", "sample2"],
+        )
         self.assertEqual(len(subp_run.call_args_list), 2)
 
         first_cmd = subp_run.call_args_list[0].args[0]
         self.assertEqual(first_cmd[0], "DAS_Tool")
         self.assertIn("--write_bins", first_cmd)
+        self.assertIn("--write_bin_evals", first_cmd)
         self.assertIn("--bins", first_cmd)
         self.assertIn("--labels", first_cmd)
         self.assertIn("--search_engine", first_cmd)

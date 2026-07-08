@@ -639,6 +639,7 @@ plugin.methods.register_function(
     outputs={
         "refined_bins": SampleData[MAGs],
         "summary": ImmutableMetadata,
+        "input_bins_evaluation": ImmutableMetadata,
     },
     input_descriptions={
         "bins": "Bins produced by a metagenomic binning tool.",
@@ -675,7 +676,8 @@ plugin.methods.register_function(
     },
     output_descriptions={
         "refined_bins": "The binned contigs created by DAS Tool.",
-        "summary": "Summary of output bins including quality and completeness estimates",
+        "summary": "Summary of output bins including quality and completeness estimates.",
+        "input_bins_evaluation": "Quality and completeness estimates of input bin sets.",
     },
     name="Refine bins produced by 2+ binning methods using DAS Tool.",
     description=(
