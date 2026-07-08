@@ -32,6 +32,7 @@ from q2_types.per_sample_sequences import (
     Contigs,
 )
 from q2_types.sample_data import SampleData
+from q2_types.metadata import ImmutableMetadata
 from q2_types.feature_map import FeatureMap, MAGtoContigs
 from qiime2.core.type import (
     Bool,
@@ -637,6 +638,7 @@ plugin.methods.register_function(
     },
     outputs={
         "refined_bins": SampleData[MAGs],
+        "summary": ImmutableMetadata,
     },
     input_descriptions={
         "bins": "Bins produced by a metagenomic binning tool.",
@@ -673,6 +675,7 @@ plugin.methods.register_function(
     },
     output_descriptions={
         "refined_bins": "The binned contigs created by DAS Tool.",
+        "summary": "Summary of output bins including quality and completeness estimates",
     },
     name="Refine bins produced by 2+ binning methods using DAS Tool.",
     description=(

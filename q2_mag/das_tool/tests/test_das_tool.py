@@ -11,6 +11,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import pandas as pd
 from q2_types.per_sample_sequences import (
     ContigSequencesDirFmt,
     MultiFASTADirectoryFormat,
@@ -18,6 +19,7 @@ from q2_types.per_sample_sequences import (
 from qiime2.plugin.testing import TestPluginBase
 
 from q2_mag.das_tool.das_tool import (
+    _append_summary,
     _process_das_tool_arg,
     _write_contig2bin_map,
     refine_bins_das_tool,
@@ -47,6 +49,39 @@ class TestDASTool(TestPluginBase):
             lines,
         )
 
+    def test_append_summary(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            summary1 = os.path.join(tempdir, "sample1_summary.tsv")
+            summary2 = os.path.join(tempdir, "sample2_summary.tsv")
+
+            pd.DataFrame(
+                {"bin": ["metabat.1"], "bin_set": ["metabat"], "bin_score": ["1"]}
+            ).to_csv(summary1, sep="\t", index=False)
+            pd.DataFrame(
+                {"bin": ["semibin.1"], "bin_set": ["semibin"], "bin_score": ["0.9"]}
+            ).to_csv(summary2, sep="\t", index=False)
+
+            summaries = _append_summary("sample1", summary1)
+            summaries = _append_summary("sample2", summary2, summaries)
+
+        self.assertEqual(summaries.index.name, "id")
+        self.assertEqual(list(summaries.index), ["sample1", "sample2"])
+        self.assertEqual(
+            summaries.to_dict(orient="records"),
+            [
+                {
+                    "bin": "metabat.1",
+                    "bin_set": "metabat",
+                    "bin_score": 1.0,
+                },
+                {
+                    "bin": "semibin.1",
+                    "bin_set": "semibin",
+                    "bin_score": 0.9,
+                },
+            ],
+        )
+
     @patch("subprocess.run")
     def test_refine_bins_das_tool(self, subp_run):
         bins = MultiFASTADirectoryFormat(self.get_data_path("sample_data_mags"), "r")
@@ -58,10 +93,13 @@ class TestDASTool(TestPluginBase):
             os.makedirs(output_dir)
             with open(os.path.join(output_dir, "refined.fa"), "w") as fh:
                 fh.write(">NZ_00000000.1_contig1\nACGT\n")
+            pd.DataFrame(
+                {"bin": ["refined"], "bin_set": ["DASTool"], "bin_score": ["1"]}
+            ).to_csv(f"{output_prefix}_DASTool_summary.tsv", sep="\t", index=False)
 
         subp_run.side_effect = _mock_das_tool
 
-        obs = refine_bins_das_tool(
+        obs, summary = refine_bins_das_tool(
             bins=[bins, bins],
             contigs=contigs,
             search_engine="diamond",
@@ -71,6 +109,7 @@ class TestDASTool(TestPluginBase):
         )
 
         self.assertIsInstance(obs, MultiFASTADirectoryFormat)
+        self.assertEqual(list(summary.to_dataframe().index), ["sample1", "sample2"])
         self.assertEqual(len(subp_run.call_args_list), 2)
 
         first_cmd = subp_run.call_args_list[0].args[0]

@@ -12,6 +12,8 @@ import tempfile
 from pathlib import Path
 from uuid import uuid4
 
+import pandas as pd
+import rachis
 import skbio.io
 from q2_types.genome_data import ProteinsDirectoryFormat
 from q2_types.per_sample_sequences import (
@@ -20,6 +22,20 @@ from q2_types.per_sample_sequences import (
 )
 
 from q2_annotate._utils import _process_common_input_params, run_command
+
+SUMMARY_DTYPES = {
+    "bin": str,
+    "bin_set": str,
+    "unique_SCGs": int,
+    "redundant_SCGs": int,
+    "SCG_set": str,
+    "size": int,
+    "contigs": int,
+    "N50": int,
+    "bin_score": float,
+    "SCG_completeness": float,
+    "SCG_redundancy": float,
+}
 
 
 def _process_das_tool_arg(arg_key, arg_val):
@@ -106,7 +122,7 @@ def _run_das_tool(
     cmd.extend(common_args)
     run_command(cmd, verbose=True)
 
-    return f"{output_prefix}_DASTool_bins"
+    return f"{output_prefix}_DASTool_bins", f"{output_prefix}_DASTool_summary.tsv"
 
 
 def _collect_refined_bins(sample_id, das_tool_bins_dir, refined_bins):
@@ -121,6 +137,19 @@ def _collect_refined_bins(sample_id, das_tool_bins_dir, refined_bins):
         shutil.copy(src, os.path.join(sample_output_dir, f"{uuid4()}.fa"))
 
     return len(refined_bin_fps)
+
+
+def _append_summary(sample_id, summary, summaries=None):
+    summary_df = pd.read_csv(summary, sep="\t", dtype=SUMMARY_DTYPES)
+
+    summary_df.insert(0, "sample-id", str(sample_id))
+    summary_df = summary_df.set_index("sample-id")
+    summary_df.index.name = "id"
+
+    if summaries is None:
+        return summary_df
+
+    return pd.concat([summaries, summary_df], sort=False)
 
 
 def _parse_labels(labels: str, n_bins: int) -> list[str]:
@@ -167,12 +196,13 @@ def _refine_bins_das_tool(
 
     sample_ids = _get_sample_ids(contigs, *bins)
     sample_proteins = _get_sample_proteins(proteins)
+    concatenated_summary = None
     refined_bins = MultiFASTADirectoryFormat()
     num_refined_bins = 0
 
     with tempfile.TemporaryDirectory() as tmp:
         for sample_id in sample_ids:
-            das_tool_bins_dir = _run_das_tool(
+            das_tool_bins_dir, summary = _run_das_tool(
                 sample_id=sample_id,
                 bins=bins,
                 contigs_fp=contigs.sample_dict()[sample_id],
@@ -184,13 +214,16 @@ def _refine_bins_das_tool(
             num_refined_bins += _collect_refined_bins(
                 sample_id, das_tool_bins_dir, refined_bins
             )
+            concatenated_summary = _append_summary(
+                sample_id, summary, concatenated_summary
+            )
 
     if num_refined_bins == 0:
         raise ValueError(
             "No refined MAGs were formed by DAS Tool, please check your inputs."
         )
 
-    return refined_bins
+    return refined_bins, rachis.Metadata(concatenated_summary)
 
 
 def refine_bins_das_tool(
@@ -205,7 +238,7 @@ def refine_bins_das_tool(
     max_iter_post_threshold: int = 10,
     threads: int = 1,
     debug: bool | None = None,
-) -> MultiFASTADirectoryFormat:
+) -> (MultiFASTADirectoryFormat, rachis.Metadata):
     kwargs = {
         k: v for k, v in locals().items() if k not in ["bins", "contigs", "proteins", "labels"]
     }
