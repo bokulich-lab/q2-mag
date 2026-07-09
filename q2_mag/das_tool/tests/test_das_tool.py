@@ -21,6 +21,8 @@ from qiime2.plugin.testing import TestPluginBase
 
 from q2_mag.das_tool.das_tool import (
     _append_summary,
+    _generate_labels,
+    _parse_labels,
     _process_das_tool_arg,
     _run_das_tool,
     _write_contig2bin_map,
@@ -53,6 +55,24 @@ class TestDASTool(TestPluginBase):
             ["--score_threshold", "0.6"],
         )
         self.assertEqual(_process_das_tool_arg("debug", True), ["--debug"])
+
+    def test_parse_labels(self):
+        self.assertEqual(_parse_labels("metabat,semibin", 2), ["metabat", "semibin"])
+
+    def test_parse_labels_wrong_count(self):
+        with self.assertRaisesRegex(
+            ValueError, "number of labels provided is different"
+        ):
+            _parse_labels("metabat,semibin", 3)
+
+    def test_parse_labels_duplicate_labels(self):
+        with self.assertRaisesRegex(ValueError, "Duplicate labels detected"):
+            _parse_labels("metabat,metabat", 2)
+
+    def test_generate_labels(self):
+        self.assertEqual(
+            _generate_labels(3), ["binning_1", "binning_2", "binning_3"]
+        )
 
     def test_write_contig2bin_map(self):
         bins = MultiFASTADirectoryFormat(self.get_data_path("sample_data_mags"), "r")
