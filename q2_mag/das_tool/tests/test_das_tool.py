@@ -7,6 +7,7 @@
 # ----------------------------------------------------------------------------
 import glob
 import os
+import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -21,13 +22,30 @@ from qiime2.plugin.testing import TestPluginBase
 from q2_mag.das_tool.das_tool import (
     _append_summary,
     _process_das_tool_arg,
+    _run_das_tool,
     _write_contig2bin_map,
     refine_bins_das_tool,
 )
 
 
+class _Bins:
+    def __init__(self, bins):
+        self._bins = bins
+
+    def sample_dict(self):
+        return {"samp1": self._bins}
+
+
+class _Contigs:
+    def __init__(self, contig_fp):
+        self._contig_fp = contig_fp
+
+    def sample_dict(self):
+        return {"samp1": self._contig_fp}
+
+
 class TestDASTool(TestPluginBase):
-    package = "q2_annotate.tests"
+    package = "q2_mag.das_tool.tests"
 
     def test_process_das_tool_arg(self):
         self.assertEqual(
@@ -96,8 +114,8 @@ class TestDASTool(TestPluginBase):
 
     @patch("subprocess.run")
     def test_refine_bins_das_tool(self, subp_run):
-        bins = MultiFASTADirectoryFormat(self.get_data_path("sample_data_mags"), "r")
-        contigs = ContigSequencesDirFmt(self.get_data_path("contigs"), "r")
+        bins_path = self.get_data_path("bins")
+        contig_fp = os.path.join(self.get_data_path("contigs"), "samp1_contigs.fa")
 
         def _mock_das_tool(cmd, check):
             output_prefix = cmd[cmd.index("--outputbasename") + 1]
@@ -115,8 +133,11 @@ class TestDASTool(TestPluginBase):
         subp_run.side_effect = _mock_das_tool
 
         obs, summary, input_bins_evaluation = refine_bins_das_tool(
-            bins=[bins, bins],
-            contigs=contigs,
+            bins=[
+                _Bins({"bin_1": os.path.join(bins_path, "bin_1_samp1.fa")}),
+                _Bins({"bin_2": os.path.join(bins_path, "bin_2_samp1.fa")}),
+            ],
+            contigs=_Contigs(contig_fp),
             search_engine="diamond",
             score_threshold=0.6,
             threads=2,
@@ -124,18 +145,14 @@ class TestDASTool(TestPluginBase):
         )
 
         self.assertIsInstance(obs, MultiFASTADirectoryFormat)
-        self.assertEqual(list(summary.to_dataframe().index), ["0", "1"])
-        self.assertEqual(
-            list(summary.to_dataframe()["sample_id"]), ["sample1", "sample2"]
-        )
-        self.assertEqual(
-            list(input_bins_evaluation.to_dataframe().index), ["0", "1"]
-        )
+        self.assertEqual(list(summary.to_dataframe().index), ["0"])
+        self.assertEqual(list(summary.to_dataframe()["sample_id"]), ["samp1"])
+        self.assertEqual(list(input_bins_evaluation.to_dataframe().index), ["0"])
         self.assertEqual(
             list(input_bins_evaluation.to_dataframe()["sample_id"]),
-            ["sample1", "sample2"],
+            ["samp1"],
         )
-        self.assertEqual(len(subp_run.call_args_list), 2)
+        self.assertEqual(len(subp_run.call_args_list), 1)
 
         first_cmd = subp_run.call_args_list[0].args[0]
         self.assertEqual(first_cmd[0], "DAS_Tool")
@@ -155,9 +172,8 @@ class TestDASTool(TestPluginBase):
             "/".join(fp.split("/")[-2:])
             for fp in glob.glob(os.path.join(str(obs), "*", "*.fa"))
         )
-        self.assertEqual(len(obs_bins), 2)
-        self.assertTrue(obs_bins[0].startswith("sample1/"))
-        self.assertTrue(obs_bins[1].startswith("sample2/"))
+        self.assertEqual(len(obs_bins), 1)
+        self.assertTrue(obs_bins[0].startswith("samp1/"))
 
     def test_refine_bins_das_tool_requires_two_binnings(self):
         bins = MultiFASTADirectoryFormat(self.get_data_path("sample_data_mags"), "r")
@@ -165,6 +181,50 @@ class TestDASTool(TestPluginBase):
 
         with self.assertRaisesRegex(ValueError, "at least two binning methods"):
             refine_bins_das_tool(bins=[bins], contigs=contigs)
+
+    @unittest.skipUnless(shutil.which("DAS_Tool"), "DAS_Tool is not installed")
+    def test_run_das_tool(self):
+        contigs_path = self.get_data_path("contigs")
+        bins_path = self.get_data_path("bins")
+
+        contig_path = os.path.join(contigs_path, "samp1_contigs.fa")
+        bin1_path = os.path.join(bins_path, "bin_1_samp1.fa")
+        bin2_path = os.path.join(bins_path, "bin_2_samp1.fa")
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            obs_bins, obs_summary, obs_evaluation = _run_das_tool(
+                sample_id="samp1",
+                bins=[
+                    _Bins({"bin_1": bin1_path}),
+                    _Bins({"bin_2": bin2_path}),
+                ],
+                contigs_fp=contig_path,
+                proteins_fp=None,
+                labels=["binning_1", "binning_2"],
+                common_args=[
+                    "--threads",
+                    "1",
+                    "--score_threshold",
+                    "0.01",
+                ],
+                output_dir=tempdir,
+            )
+
+            self.assertEqual(obs_bins, os.path.join(tempdir, "samp1_DASTool_bins"))
+            self.assertEqual(
+                obs_summary, os.path.join(tempdir, "samp1_DASTool_summary.tsv")
+            )
+            self.assertEqual(
+                obs_evaluation, os.path.join(tempdir, "samp1_allBins.eval")
+            )
+            self.assertTrue(
+                os.path.exists(os.path.join(tempdir, "binning_1_contig2bin.tsv"))
+            )
+            self.assertTrue(
+                os.path.exists(os.path.join(tempdir, "binning_2_contig2bin.tsv"))
+            )
+            self.assertTrue(os.path.exists(obs_summary))
+            self.assertTrue(os.path.exists(obs_evaluation))
 
 
 if __name__ == "__main__":
