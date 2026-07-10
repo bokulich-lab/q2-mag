@@ -8,20 +8,21 @@
 import glob
 import os
 import shutil
+import subprocess
 import tempfile
+import warnings
 from pathlib import Path
 from uuid import uuid4
 
 import pandas as pd
 import rachis
 import skbio.io
+from q2_annotate._utils import _process_common_input_params, run_command
 from q2_types.genome_data import ProteinsDirectoryFormat
 from q2_types.per_sample_sequences import (
     ContigSequencesDirFmt,
     MultiFASTADirectoryFormat,
 )
-
-from q2_annotate._utils import _process_common_input_params, run_command
 
 SUMMARY_DTYPES = {
     "bin": str,
@@ -126,7 +127,7 @@ def _run_das_tool(
     return (
         f"{output_prefix}_DASTool_bins",
         f"{output_prefix}_DASTool_summary.tsv",
-        f"{output_prefix}_allBins.eval"
+        f"{output_prefix}_allBins.eval",
     )
 
 
@@ -208,37 +209,69 @@ def _refine_bins_das_tool(
     concatenated_evaluation = None
     refined_bins = MultiFASTADirectoryFormat()
     num_refined_bins = 0
+    warned_failure = False
+    failed_samples = []
 
     with tempfile.TemporaryDirectory() as tmp:
         for sample_id in sample_ids:
-            das_tool_bins_dir, summary, evaluation = _run_das_tool(
-                sample_id=sample_id,
-                bins=bins,
-                contigs_fp=contigs.sample_dict()[sample_id],
-                proteins_fp=sample_proteins.get(sample_id),
-                labels=labels,
-                common_args=common_args,
-                output_dir=tmp,
-            )
+            das_tool_bins_dir = os.path.join(tmp, f"{sample_id}_DASTool_bins")
+
+            # In cases where 1+ samples fail to produce any bins, we issue a warning
+            # but continue the analysis for the other samples, given that at least one
+            # bin is produced.
+            try:
+                _, summary, evaluation = _run_das_tool(
+                    sample_id=sample_id,
+                    bins=bins,
+                    contigs_fp=contigs.sample_dict()[sample_id],
+                    proteins_fp=sample_proteins.get(sample_id),
+                    labels=labels,
+                    common_args=common_args,
+                    output_dir=tmp,
+                )
+            except subprocess.CalledProcessError:
+                if not warned_failure:
+                    warnings.warn(
+                        "DAS Tool failed to produce refined bins for at least one "
+                        "sample. This can happen when no bins pass the score "
+                        "threshold; lowering the score threshold may resolve this. "
+                        "Failed samples will be recorded with no refined bins.",
+                        UserWarning,
+                    )
+                    warned_failure = True
+                failed_samples.append(sample_id)
+            else:
+                # Do not append summary files if no refined bins were recovered
+                concatenated_summary = _append_summary(
+                    sample_id, summary, concatenated_summary
+                )
+                concatenated_evaluation = _append_summary(
+                    sample_id, evaluation, concatenated_evaluation
+                )
+
+            # Always record the sample ID even if no refined bins were recovered for
+            # that sample.
             num_refined_bins += _collect_refined_bins(
                 sample_id, das_tool_bins_dir, refined_bins
             )
-            concatenated_summary = _append_summary(
-                sample_id, summary, concatenated_summary
-            )
-            concatenated_evaluation = _append_summary(
-                sample_id, evaluation, concatenated_evaluation
-            )
+
+    # Report the names of samples that failed to produce any bins
+    if failed_samples:
+        warnings.warn(
+            "No bins produced for sample(s): " + ", ".join(failed_samples),
+            UserWarning,
+        )
 
     if num_refined_bins == 0:
         raise ValueError(
-            "No refined MAGs were formed by DAS Tool, please check your inputs."
+            "No refined MAGs were formed by DAS Tool, please check your inputs. "
+            "If DAS Tool is filtering out all bins, try lowering the score threshold."
         )
 
     return (
         refined_bins,
         rachis.Metadata(concatenated_summary),
-        rachis.Metadata(concatenated_evaluation)
+        rachis.Metadata(concatenated_evaluation),
     )
 
 
@@ -256,7 +289,9 @@ def refine_bins_das_tool(
     debug: bool | None = None,
 ) -> (MultiFASTADirectoryFormat, rachis.Metadata, rachis.Metadata):
     kwargs = {
-        k: v for k, v in locals().items() if k not in ["bins", "contigs", "proteins", "labels"]
+        k: v
+        for k, v in locals().items()
+        if k not in ["bins", "contigs", "proteins", "labels"]
     }
 
     common_args = _process_common_input_params(

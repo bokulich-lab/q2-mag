@@ -8,8 +8,10 @@
 import glob
 import os
 import shutil
+import subprocess
 import tempfile
 import unittest
+import warnings
 from unittest.mock import patch
 
 import pandas as pd
@@ -31,19 +33,25 @@ from q2_mag.das_tool.das_tool import (
 
 
 class _Bins:
-    def __init__(self, bins):
-        self._bins = bins
+    def __init__(self, bins, sample_id="samp1"):
+        if isinstance(bins, dict) and all(isinstance(v, dict) for v in bins.values()):
+            self._sample_dict = bins
+        else:
+            self._sample_dict = {sample_id: bins}
 
     def sample_dict(self):
-        return {"samp1": self._bins}
+        return self._sample_dict
 
 
 class _Contigs:
-    def __init__(self, contig_fp):
-        self._contig_fp = contig_fp
+    def __init__(self, contig_fp, sample_id="samp1"):
+        if isinstance(contig_fp, dict):
+            self._sample_dict = contig_fp
+        else:
+            self._sample_dict = {sample_id: contig_fp}
 
     def sample_dict(self):
-        return {"samp1": self._contig_fp}
+        return self._sample_dict
 
 
 class TestDASTool(TestPluginBase):
@@ -194,6 +202,95 @@ class TestDASTool(TestPluginBase):
         )
         self.assertEqual(len(obs_bins), 1)
         self.assertTrue(obs_bins[0].startswith("samp1/"))
+
+    @patch("subprocess.run")
+    def test_refine_bins_das_tool_warns_and_continues_when_sample_fails(
+        self, subp_run
+    ):
+        bins_path = self.get_data_path("bins")
+        contig_fp = os.path.join(self.get_data_path("contigs"), "samp1_contigs.fa")
+        bin_1 = os.path.join(bins_path, "bin_1_samp1.fa")
+        bin_2 = os.path.join(bins_path, "bin_2_samp1.fa")
+
+        def _mock_das_tool(cmd, check):
+            output_prefix = cmd[cmd.index("--outputbasename") + 1]
+            if output_prefix.endswith("samp1"):
+                output_dir = f"{output_prefix}_DASTool_bins"
+                os.makedirs(output_dir)
+                with open(os.path.join(output_dir, "refined.fa"), "w") as fh:
+                    fh.write(">NZ_00000000.1_contig1\nACGT\n")
+                pd.DataFrame(
+                    {"bin": ["refined"], "bin_set": ["DASTool"], "bin_score": ["1"]}
+                ).to_csv(
+                    f"{output_prefix}_DASTool_summary.tsv", sep="\t", index=False
+                )
+                pd.DataFrame(
+                    {"bin": ["input"], "bin_set": ["metabat"], "bin_score": ["0.9"]}
+                ).to_csv(f"{output_prefix}_allBins.eval", sep="\t", index=False)
+            else:
+                raise subprocess.CalledProcessError(1, cmd)
+
+        subp_run.side_effect = _mock_das_tool
+
+        with warnings.catch_warnings(record=True) as warning_records:
+            warnings.simplefilter("always")
+            obs, summary, input_bins_evaluation = refine_bins_das_tool(
+                bins=[
+                    _Bins(
+                        {
+                            "samp1": {"bin_1": bin_1},
+                            "samp2": {"bin_1": bin_1},
+                        }
+                    ),
+                    _Bins(
+                        {
+                            "samp1": {"bin_2": bin_2},
+                            "samp2": {"bin_2": bin_2},
+                        }
+                    ),
+                ],
+                contigs=_Contigs({"samp1": contig_fp, "samp2": contig_fp}),
+                score_threshold=0.6,
+            )
+
+        warning_messages = [str(record.message) for record in warning_records]
+        self.assertTrue(
+            any("lowering the score threshold" in msg for msg in warning_messages)
+        )
+        self.assertIn("No bins produced for sample(s): samp2", warning_messages)
+        self.assertIsInstance(obs, MultiFASTADirectoryFormat)
+        self.assertEqual(set(obs.sample_dict()), {"samp1", "samp2"})
+        self.assertEqual(obs.sample_dict()["samp2"], {})
+        self.assertEqual(list(summary.to_dataframe()["sample_id"]), ["samp1"])
+        self.assertEqual(
+            list(input_bins_evaluation.to_dataframe()["sample_id"]), ["samp1"]
+        )
+        self.assertEqual(len(subp_run.call_args_list), 2)
+
+    @patch("subprocess.run")
+    def test_refine_bins_das_tool_fails_when_all_samples_fail(self, subp_run):
+        bins_path = self.get_data_path("bins")
+        contig_fp = os.path.join(self.get_data_path("contigs"), "samp1_contigs.fa")
+
+        subp_run.side_effect = subprocess.CalledProcessError(1, ["DAS_Tool"])
+
+        with warnings.catch_warnings(record=True) as warning_records:
+            warnings.simplefilter("always")
+            with self.assertRaisesRegex(ValueError, "No refined MAGs were formed"):
+                refine_bins_das_tool(
+                    bins=[
+                        _Bins({"bin_1": os.path.join(bins_path, "bin_1_samp1.fa")}),
+                        _Bins({"bin_2": os.path.join(bins_path, "bin_2_samp1.fa")}),
+                    ],
+                    contigs=_Contigs(contig_fp),
+                    score_threshold=0.6,
+                )
+
+        warning_messages = [str(record.message) for record in warning_records]
+        self.assertTrue(
+            any("lowering the score threshold" in msg for msg in warning_messages)
+        )
+        self.assertIn("No bins produced for sample(s): samp1", warning_messages)
 
     def test_refine_bins_das_tool_requires_two_binnings(self):
         bins = MultiFASTADirectoryFormat(self.get_data_path("sample_data_mags"), "r")
