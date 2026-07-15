@@ -188,7 +188,7 @@ def _generate_labels(n_bins: int) -> list[str]:
 def _refine_bins_das_tool(
     bins: MultiFASTADirectoryFormat,
     contigs: ContigSequencesDirFmt,
-    proteins: ProteinsDirectoryFormat | None,
+    proteins: ProteinsDirectoryFormat,
     labels: str | None,
     common_args: list,
 ) -> MultiFASTADirectoryFormat:
@@ -275,7 +275,7 @@ def _refine_bins_das_tool(
 def refine_bins_das_tool(
     bins: MultiFASTADirectoryFormat,
     contigs: ContigSequencesDirFmt,
-    proteins: ProteinsDirectoryFormat | None = None,
+    proteins: ProteinsDirectoryFormat = None,
     labels: str | None = None,
     search_engine: str = "diamond",
     score_threshold: float = 0.5,
