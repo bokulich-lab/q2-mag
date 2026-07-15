@@ -676,8 +676,12 @@ plugin.methods.register_function(
     },
     output_descriptions={
         "refined_bins": "The binned contigs created by DAS Tool.",
-        "summary": "Summary of output bins including quality and completeness estimates.",
-        "input_bins_evaluation": "Quality and completeness estimates of input bin sets.",
+        "summary": (
+            "Summary of output bins including quality and completeness estimates."
+        ),
+        "input_bins_evaluation": (
+            "Quality and completeness estimates of input bin sets."
+        ),
     },
     name="Refine bins produced by 2+ binning methods using DAS Tool.",
     description=(

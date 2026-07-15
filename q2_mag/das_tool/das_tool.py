@@ -171,7 +171,7 @@ def _parse_labels(labels: str, n_bins: int) -> list[str]:
         )
         raise ValueError(
             "Duplicate labels detected. Each label provided must be a unique string. "
-            f"The following labels appear more than once: {",".join(duplicate_labels)}."
+            f"The following labels appear more than once: {','.join(duplicate_labels)}."
         )
 
     return split_labels
