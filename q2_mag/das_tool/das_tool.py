@@ -17,7 +17,7 @@ from uuid import uuid4
 import pandas as pd
 import rachis
 import skbio.io
-from q2_annotate._utils import _process_common_input_params, run_command
+from q2_mag.utils import _process_common_input_params, run_command
 from q2_types.genome_data import ProteinsDirectoryFormat
 from q2_types.per_sample_sequences import (
     ContigSequencesDirFmt,
