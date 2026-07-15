@@ -6,7 +6,16 @@
 #
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
-from . import abundance, busco, dereplication, filtering, metabat2, utils, semibin2, das_tool
+from . import (
+    abundance,
+    busco,
+    dereplication,
+    filtering,
+    metabat2,
+    utils,
+    semibin2,
+    das_tool,
+)
 
 try:
     from ._version import __version__

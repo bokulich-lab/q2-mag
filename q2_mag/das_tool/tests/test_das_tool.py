@@ -78,9 +78,7 @@ class TestDASTool(TestPluginBase):
             _parse_labels("metabat,metabat", 2)
 
     def test_generate_labels(self):
-        self.assertEqual(
-            _generate_labels(3), ["binning_1", "binning_2", "binning_3"]
-        )
+        self.assertEqual(_generate_labels(3), ["binning_1", "binning_2", "binning_3"])
 
     def test_write_contig2bin_map(self):
         bins = MultiFASTADirectoryFormat(self.get_data_path("sample_data_mags"), "r")
@@ -115,9 +113,7 @@ class TestDASTool(TestPluginBase):
             summaries = _append_summary("sample2", summary2, summaries)
 
         self.assertEqual(summaries.index.name, "id")
-        self.assertEqual(
-            list(summaries.index), ["metabat.1", "metabat.2", "semibin.1"]
-        )
+        self.assertEqual(list(summaries.index), ["metabat.1", "metabat.2", "semibin.1"])
         self.assertEqual(
             summaries.to_dict(orient="records"),
             [
@@ -203,9 +199,7 @@ class TestDASTool(TestPluginBase):
         self.assertTrue(obs_bins[0].startswith("samp1/"))
 
     @patch("subprocess.run")
-    def test_refine_bins_das_tool_warns_and_continues_when_sample_fails(
-        self, subp_run
-    ):
+    def test_refine_bins_das_tool_warns_and_continues_when_sample_fails(self, subp_run):
         bins_path = self.get_data_path("bins")
         contig_fp = os.path.join(self.get_data_path("contigs"), "samp1_contigs.fa")
         bin_1 = os.path.join(bins_path, "bin_1_samp1.fa")
@@ -220,9 +214,7 @@ class TestDASTool(TestPluginBase):
                     fh.write(">NZ_00000000.1_contig1\nACGT\n")
                 pd.DataFrame(
                     {"bin": ["refined"], "bin_set": ["DASTool"], "bin_score": ["1"]}
-                ).to_csv(
-                    f"{output_prefix}_DASTool_summary.tsv", sep="\t", index=False
-                )
+                ).to_csv(f"{output_prefix}_DASTool_summary.tsv", sep="\t", index=False)
                 pd.DataFrame(
                     {"bin": ["input"], "bin_set": ["metabat"], "bin_score": ["0.9"]}
                 ).to_csv(f"{output_prefix}_allBins.eval", sep="\t", index=False)

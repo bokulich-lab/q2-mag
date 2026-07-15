@@ -682,7 +682,8 @@ plugin.methods.register_function(
     name="Refine bins produced by 2+ binning methods using DAS Tool.",
     description=(
         "This method uses DAS Tool to integrate multiple binning prediction to "
-        "produce an optimized, non-redundant set of bins."),
+        "produce an optimized, non-redundant set of bins."
+    ),
     citations=[
         citations["sieber2018recovery"],
     ],
