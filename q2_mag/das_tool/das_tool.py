@@ -149,11 +149,8 @@ def _append_summary(sample_id, summary, summaries=None):
     summary_df = pd.read_csv(summary, sep="\t", dtype=SUMMARY_DTYPES)
 
     summary_df.insert(0, "sample_id", str(sample_id))
-    start = 0 if summaries is None else len(summaries)
-    summary_df.index = pd.Index(
-        [str(idx) for idx in range(start, start + len(summary_df))],
-        name="id",
-    )
+    summary_df.set_index("bin", drop=True, inplace=True)
+    summary_df.index.name = "id"
 
     if summaries is None:
         return summary_df

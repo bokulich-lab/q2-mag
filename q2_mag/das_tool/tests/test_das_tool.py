@@ -115,25 +115,24 @@ class TestDASTool(TestPluginBase):
             summaries = _append_summary("sample2", summary2, summaries)
 
         self.assertEqual(summaries.index.name, "id")
-        self.assertEqual(list(summaries.index), ["0", "1", "2"])
+        self.assertEqual(
+            list(summaries.index), ["metabat.1", "metabat.2", "semibin.1"]
+        )
         self.assertEqual(
             summaries.to_dict(orient="records"),
             [
                 {
                     "sample_id": "sample1",
-                    "bin": "metabat.1",
                     "bin_set": "metabat",
                     "bin_score": 1.0,
                 },
                 {
                     "sample_id": "sample1",
-                    "bin": "metabat.2",
                     "bin_set": "metabat",
                     "bin_score": 0.8,
                 },
                 {
                     "sample_id": "sample2",
-                    "bin": "semibin.1",
                     "bin_set": "semibin",
                     "bin_score": 0.9,
                 },
@@ -173,9 +172,9 @@ class TestDASTool(TestPluginBase):
         )
 
         self.assertIsInstance(obs, MultiFASTADirectoryFormat)
-        self.assertEqual(list(summary.to_dataframe().index), ["0"])
+        self.assertEqual(list(summary.to_dataframe().index), ["refined"])
         self.assertEqual(list(summary.to_dataframe()["sample_id"]), ["samp1"])
-        self.assertEqual(list(input_bins_evaluation.to_dataframe().index), ["0"])
+        self.assertEqual(list(input_bins_evaluation.to_dataframe().index), ["input"])
         self.assertEqual(
             list(input_bins_evaluation.to_dataframe()["sample_id"]),
             ["samp1"],
