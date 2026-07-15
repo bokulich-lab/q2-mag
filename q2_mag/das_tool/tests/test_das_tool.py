@@ -141,9 +141,7 @@ class TestDASTool(TestPluginBase):
             summaries = _append_summary("sample2", summary2, summaries)
 
         self.assertEqual(summaries.index.name, "id")
-        self.assertEqual(
-            list(summaries.index), ["metabat.1", "metabat.2", "semibin.1"]
-        )
+        self.assertEqual(list(summaries.index), ["metabat.1", "metabat.2", "semibin.1"])
         self.assertEqual(
             summaries.to_dict(orient="records"),
             [
@@ -214,9 +212,7 @@ class TestDASTool(TestPluginBase):
         self.assertIn("--write_bin_evals", first_cmd)
         self.assertIn("--bins", first_cmd)
         self.assertIn("--labels", first_cmd)
-        self.assertEqual(
-            first_cmd[first_cmd.index("--labels") + 1], "metabat,semibin"
-        )
+        self.assertEqual(first_cmd[first_cmd.index("--labels") + 1], "metabat,semibin")
         self.assertIn("--search_engine", first_cmd)
         self.assertIn("diamond", first_cmd)
         self.assertIn("--score_threshold", first_cmd)
@@ -233,9 +229,7 @@ class TestDASTool(TestPluginBase):
         self.assertTrue(obs_bins[0].startswith("samp1/"))
 
     @patch("subprocess.run")
-    def test_refine_bins_das_tool_warns_and_continues_when_samples_fail(
-        self, subp_run
-    ):
+    def test_refine_bins_das_tool_warns_and_continues_when_samples_fail(self, subp_run):
         bins_path = self.get_data_path("bins")
         contig_fp = os.path.join(self.get_data_path("contigs"), "samp1_contigs.fa")
         bin_1 = os.path.join(bins_path, "bin_1_samp1.fa")
@@ -288,9 +282,7 @@ class TestDASTool(TestPluginBase):
         self.assertTrue(
             any("lowering the score threshold" in msg for msg in warning_messages)
         )
-        self.assertIn(
-            "No bins produced for sample(s): samp2, samp3", warning_messages
-        )
+        self.assertIn("No bins produced for sample(s): samp2, samp3", warning_messages)
         self.assertIsInstance(obs, MultiFASTADirectoryFormat)
         self.assertEqual(set(obs.sample_dict()), {"samp1", "samp2", "samp3"})
         self.assertEqual(obs.sample_dict()["samp2"], {})
