@@ -103,6 +103,14 @@ def _run_das_tool(
             _write_contig2bin_map(binning, sample_id, label, output_dir)
         )
 
+    # Copy inputs into the temp workspace so DAS Tool cannot create extra files
+    # inside QIIME's cached artifact directories.
+    input_dir = os.path.join(output_dir, f"{sample_id}_inputs")
+    os.makedirs(input_dir, exist_ok=True)
+    staged_contigs_fp = shutil.copy(contigs_fp, input_dir)
+    if proteins_fp is not None:
+        proteins_fp = shutil.copy(proteins_fp, input_dir)
+
     output_prefix = os.path.join(output_dir, sample_id)
     cmd = [
         "DAS_Tool",
@@ -111,7 +119,7 @@ def _run_das_tool(
         "--labels",
         ",".join(labels),
         "--contigs",
-        contigs_fp,
+        staged_contigs_fp,
         "--outputbasename",
         output_prefix,
         "--write_bins",
