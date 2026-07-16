@@ -320,8 +320,16 @@ class TestDASTool(TestPluginBase):
         )
 
         cmd = run_command.call_args.args[0]
+        staged_contigs_path = cmd[cmd.index("--contigs") + 1]
+        staged_proteins_path = cmd[cmd.index("--proteins") + 1]
+
+        self.assertNotEqual(staged_contigs_path, contig_path)
+        self.assertTrue(staged_contigs_path.startswith(self.temp_dir.name))
+        self.assertTrue(os.path.exists(staged_contigs_path))
         self.assertIn("--proteins", cmd)
-        self.assertEqual(cmd[cmd.index("--proteins") + 1], proteins_path)
+        self.assertNotEqual(staged_proteins_path, proteins_path)
+        self.assertTrue(staged_proteins_path.startswith(self.temp_dir.name))
+        self.assertTrue(os.path.exists(staged_proteins_path))
         self.assertEqual(
             obs_bins, os.path.join(self.temp_dir.name, "samp1_DASTool_bins")
         )
