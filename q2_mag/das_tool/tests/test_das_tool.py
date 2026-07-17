@@ -259,10 +259,9 @@ class TestDASTool(TestPluginBase):
             )
 
         warning_messages = [str(record.message) for record in warning_records]
-        self.assertTrue(
-            any("lowering the score threshold" in msg for msg in warning_messages)
-        )
-        self.assertIn("No bins produced for sample(s): samp2, samp3", warning_messages)
+        self.assertIn("No bins produced for sample samp2.", warning_messages)
+        self.assertIn("No bins produced for sample samp3.", warning_messages)
+        self.assertIn("No bins produced for sample(s): samp2, samp3.", warning_messages)
         self.assertIsInstance(obs, MultiFASTADirectoryFormat)
         self.assertEqual(set(obs.sample_dict()), {"samp1", "samp2", "samp3"})
         self.assertEqual(obs.sample_dict()["samp2"], {})
@@ -340,10 +339,8 @@ class TestDASTool(TestPluginBase):
                 )
 
         warning_messages = [str(record.message) for record in warning_records]
-        self.assertTrue(
-            any("lowering the score threshold" in msg for msg in warning_messages)
-        )
-        self.assertIn("No bins produced for sample(s): samp1", warning_messages)
+        self.assertIn("No bins produced for sample samp1.", warning_messages)
+        self.assertIn("No bins produced for sample(s): samp1.", warning_messages)
 
     def test_refine_bins_das_tool_requires_two_binnings(self):
         bins = MultiFASTADirectoryFormat(self.get_data_path("sample_data_mags"), "r")

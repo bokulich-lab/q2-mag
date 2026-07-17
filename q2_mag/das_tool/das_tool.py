@@ -198,7 +198,6 @@ def _refine_bins_das_tool(
     concatenated_evaluation = None
     refined_bins = MultiFASTADirectoryFormat()
     num_refined_bins = 0
-    warned_failure = False
     failed_samples = []
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -219,15 +218,10 @@ def _refine_bins_das_tool(
                     output_dir=tmp,
                 )
             except subprocess.CalledProcessError:
-                if not warned_failure:
-                    warnings.warn(
-                        "DAS Tool failed to produce refined bins for at least one "
-                        "sample. This can happen when no bins pass the score "
-                        "threshold; lowering the score threshold may resolve this. "
-                        "Failed samples will be recorded with no refined bins.",
-                        UserWarning,
-                    )
-                    warned_failure = True
+                warnings.warn(
+                    f"No bins produced for sample {sample_id}.",
+                    UserWarning,
+                )
                 failed_samples.append(sample_id)
             else:
                 # Do not append summary files if no refined bins were recovered
@@ -247,7 +241,7 @@ def _refine_bins_das_tool(
     # Report the names of samples that failed to produce any bins
     if failed_samples:
         warnings.warn(
-            "No bins produced for sample(s): " + ", ".join(failed_samples),
+            "No bins produced for sample(s): " + ", ".join(failed_samples) + ".",
             UserWarning,
         )
 
