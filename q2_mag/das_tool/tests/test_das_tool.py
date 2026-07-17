@@ -24,7 +24,6 @@ from qiime2.plugin.testing import TestPluginBase
 from q2_mag.das_tool.das_tool import (
     _append_summary,
     _get_sample_ids,
-    _get_sample_proteins,
     _generate_labels,
     _parse_labels,
     _process_das_tool_arg,
@@ -88,25 +87,6 @@ class TestDASTool(TestPluginBase):
                 _Contigs({"samp1": "samp1_contigs.fa"}),
                 _Bins({"samp2": {"bin_1": "bin_1.fa"}}),
             )
-
-    def test_get_sample_proteins(self):
-        with tempfile.TemporaryDirectory() as tempdir:
-            expected = {
-                "samp1": os.path.join(tempdir, "samp1.fa"),
-                "samp2": os.path.join(tempdir, "samp2.faa"),
-                "samp3": os.path.join(tempdir, "samp3.fasta"),
-            }
-
-            for fp in expected.values():
-                with open(fp, "w") as fh:
-                    fh.write(">protein\nM\n")
-
-            with open(os.path.join(tempdir, "samp4.txt"), "w") as fh:
-                fh.write("ignored\n")
-
-            obs = _get_sample_proteins(tempdir)
-
-        self.assertEqual(obs, expected)
 
     def test_write_contig2bin_map(self):
         bins = MultiFASTADirectoryFormat(self.get_data_path("sample_data_mags"), "r")

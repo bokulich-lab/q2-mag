@@ -60,21 +60,6 @@ def _get_sample_ids(*formats):
     return sorted(sample_ids)
 
 
-def _get_sample_proteins(proteins: ProteinsDirectoryFormat | None) -> dict:
-    if proteins is None:
-        return {}
-
-    sample_proteins = {}
-    fasta_paths = []
-    for ext in ("*.fa", "*.faa", "*.fasta"):
-        fasta_paths.extend(glob.glob(os.path.join(str(proteins), ext)))
-
-    for fp in fasta_paths:
-        sample_proteins[Path(fp).stem] = fp
-
-    return sample_proteins
-
-
 def _write_contig2bin_map(bins, sample_id, label, output_dir):
     sample_bins = bins.sample_dict()[sample_id]
     output_fp = os.path.join(output_dir, f"{label}_contig2bin.tsv")
@@ -209,7 +194,7 @@ def _refine_bins_das_tool(
         labels = _generate_labels(len(bins))
 
     sample_ids = _get_sample_ids(contigs, *bins)
-    sample_proteins = _get_sample_proteins(proteins)
+    sample_proteins = proteins.file_dict() if proteins is not None else {}
     concatenated_summary = None
     concatenated_evaluation = None
     refined_bins = MultiFASTADirectoryFormat()
