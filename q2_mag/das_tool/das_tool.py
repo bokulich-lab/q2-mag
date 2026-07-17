@@ -45,7 +45,9 @@ def _process_das_tool_arg(arg_key, arg_val):
         return [f"--{arg_key}", str(arg_val)]
 
 
-def _get_sample_ids(*formats):
+def _get_sample_ids(
+    *formats: ContigSequencesDirFmt | MultiFASTADirectoryFormat,
+) -> list[str]:
     sample_ids = None
     for fmt in formats:
         ids = set(fmt.sample_dict())
