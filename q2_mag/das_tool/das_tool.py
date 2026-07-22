@@ -46,19 +46,35 @@ def _process_das_tool_arg(arg_key, arg_val):
 
 
 def _get_sample_ids(
-    *formats: ContigSequencesDirFmt | MultiFASTADirectoryFormat,
+    contigs: ContigSequencesDirFmt,
+    protein_ids: list[str] | None = None,
+    *bins: MultiFASTADirectoryFormat,
 ) -> list[str]:
-    sample_ids = None
-    for fmt in formats:
-        ids = set(fmt.sample_dict())
-        if sample_ids is None:
-            sample_ids = ids
-        elif sample_ids != ids:
+    contig_ids = set(contigs.sample_dict())
+
+    for mag in bins:
+        bin_ids = set(mag.sample_dict())
+        if bin_ids != contig_ids:
+            missing = contig_ids - bin_ids
+            extra = bin_ids - contig_ids
+
             raise ValueError(
                 "Bins and contigs must contain the same sample IDs. "
-                f"Observed sample sets: {sorted(sample_ids)} and {sorted(ids)}."
+                f"Missing from bins: {', '.join(sorted(missing)) or 'none'}. "
+                f"Only in bins: {', '.join(sorted(extra)) or 'none'}."
             )
-    return sorted(sample_ids)
+
+    if protein_ids is not None and protein_ids != contig_ids:
+        missing = contig_ids - protein_ids
+        extra = protein_ids - contig_ids
+
+        raise ValueError(
+            "Proteins, bins, and contigs must all contain the same sample IDs. "
+            f"Missing from proteins: {', '.join(sorted(missing)) or 'none'}. "
+            f"Only in proteins: {', '.join(sorted(extra)) or 'none'}."
+        )
+
+    return sorted(contig_ids)
 
 
 def _write_contig2bin_map(bins, sample_id, label, output_dir):
@@ -194,8 +210,9 @@ def _refine_bins_das_tool(
     else:
         labels = _generate_labels(len(bins))
 
-    sample_ids = _get_sample_ids(contigs, *bins)
     sample_proteins = proteins.file_dict() if proteins is not None else {}
+    protein_ids = sample_proteins.keys() if proteins is not None else None
+    sample_ids = _get_sample_ids(contigs, protein_ids, *bins)
     concatenated_summary = None
     concatenated_evaluation = None
     refined_bins = MultiFASTADirectoryFormat()
