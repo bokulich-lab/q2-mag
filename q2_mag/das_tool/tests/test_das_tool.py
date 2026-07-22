@@ -82,11 +82,59 @@ class TestDASTool(TestPluginBase):
         self.assertEqual(_generate_labels(3), ["binning_1", "binning_2", "binning_3"])
 
     def test_get_sample_ids_mismatched_samples(self):
-        with self.assertRaisesRegex(ValueError, "same sample IDs"):
+        with self.assertRaisesRegex(
+            ValueError,
+            "Missing from bins: samp1. Only in bins: samp2",
+        ):
             _get_sample_ids(
                 _Contigs({"samp1": "samp1_contigs.fa"}),
+                None,
                 _Bins({"samp2": {"bin_1": "bin_1.fa"}}),
             )
+
+    def test_get_sample_ids_missing_protein_sample(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "Missing from proteins: samp2. Only in proteins: none",
+        ):
+            _get_sample_ids(
+                _Contigs(
+                    {
+                        "samp1": "samp1_contigs.fa",
+                        "samp2": "samp2_contigs.fa",
+                    }
+                ),
+                {"samp1"},
+            )
+
+    def test_get_sample_ids_extra_protein_sample(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "Missing from proteins: none. Only in proteins: samp2",
+        ):
+            _get_sample_ids(
+                _Contigs({"samp1": "samp1_contigs.fa"}),
+                {"samp1", "samp2"},
+            )
+
+    def test_get_sample_ids_matching_samples(self):
+        observed = _get_sample_ids(
+            _Contigs(
+                {
+                    "samp2": "samp2_contigs.fa",
+                    "samp1": "samp1_contigs.fa",
+                }
+            ),
+            {"samp1", "samp2"},
+            _Bins(
+                {
+                    "samp1": {"bin_1": "bin_1.fa"},
+                    "samp2": {"bin_2": "bin_2.fa"},
+                }
+            ),
+        )
+
+        self.assertEqual(observed, ["samp1", "samp2"])
 
     def test_write_contig2bin_map(self):
         bins = MultiFASTADirectoryFormat(self.get_data_path("sample_data_mags"), "r")
