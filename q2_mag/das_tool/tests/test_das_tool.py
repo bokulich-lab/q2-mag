@@ -187,7 +187,9 @@ class TestDASTool(TestPluginBase):
         bins_path = self.get_data_path("bins")
         contig_fp = os.path.join(self.get_data_path("contigs"), "samp1_contigs.fa")
 
-        def _mock_das_tool(cmd, check):
+        def _mock_das_tool(cmd, check, env):
+            self.assertEqual(env["LANG"], "C")
+            self.assertEqual(env["LC_ALL"], "C")
             output_prefix = cmd[cmd.index("--outputbasename") + 1]
             output_dir = f"{output_prefix}_DASTool_bins"
             os.makedirs(output_dir)
@@ -254,7 +256,9 @@ class TestDASTool(TestPluginBase):
         bin_1 = os.path.join(bins_path, "bin_1_samp1.fa")
         bin_2 = os.path.join(bins_path, "bin_2_samp1.fa")
 
-        def _mock_das_tool(cmd, check):
+        def _mock_das_tool(cmd, check, env):
+            self.assertEqual(env["LANG"], "C")
+            self.assertEqual(env["LC_ALL"], "C")
             output_prefix = cmd[cmd.index("--outputbasename") + 1]
             if output_prefix.endswith("samp1"):
                 output_dir = f"{output_prefix}_DASTool_bins"
@@ -338,9 +342,12 @@ class TestDASTool(TestPluginBase):
         )
 
         cmd = run_command.call_args.args[0]
+        env = run_command.call_args.kwargs["env"]
         staged_contigs_path = cmd[cmd.index("--contigs") + 1]
         staged_proteins_path = cmd[cmd.index("--proteins") + 1]
 
+        self.assertEqual(env["LANG"], "C")
+        self.assertEqual(env["LC_ALL"], "C")
         self.assertNotEqual(staged_contigs_path, contig_path)
         self.assertTrue(staged_contigs_path.startswith(self.temp_dir.name))
         self.assertTrue(os.path.exists(staged_contigs_path))
