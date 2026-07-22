@@ -54,25 +54,22 @@ def _get_sample_ids(
 
     for mag in bins:
         bin_ids = set(mag.sample_dict())
-        if bin_ids != contig_ids:
-            missing = contig_ids - bin_ids
-            extra = bin_ids - contig_ids
+        missing = contig_ids - bin_ids
 
+        if len(missing) >= 1:
             raise ValueError(
-                "Bins and contigs must contain the same sample IDs. "
+                "Bins must contain all sample IDs present in contigs"
                 f"Missing from bins: {', '.join(sorted(missing)) or 'none'}. "
-                f"Only in bins: {', '.join(sorted(extra)) or 'none'}."
             )
 
-    if protein_ids is not None and protein_ids != contig_ids:
+    if protein_ids is not None:
         missing = contig_ids - protein_ids
-        extra = protein_ids - contig_ids
 
-        raise ValueError(
-            "Proteins, bins, and contigs must all contain the same sample IDs. "
-            f"Missing from proteins: {', '.join(sorted(missing)) or 'none'}. "
-            f"Only in proteins: {', '.join(sorted(extra)) or 'none'}."
-        )
+        if len(missing) >= 1:
+            raise ValueError(
+                "Proteins must contain all sample IDs present in contigs"
+                f"Missing from proteins: {', '.join(sorted(missing)) or 'none'}. "
+            )
 
     return sorted(contig_ids)
 

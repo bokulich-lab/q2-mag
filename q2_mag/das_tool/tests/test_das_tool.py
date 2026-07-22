@@ -84,7 +84,7 @@ class TestDASTool(TestPluginBase):
     def test_get_sample_ids_mismatched_samples(self):
         with self.assertRaisesRegex(
             ValueError,
-            "Missing from bins: samp1. Only in bins: samp2",
+            "Missing from bins: samp1",
         ):
             _get_sample_ids(
                 _Contigs({"samp1": "samp1_contigs.fa"}),
@@ -95,7 +95,7 @@ class TestDASTool(TestPluginBase):
     def test_get_sample_ids_missing_protein_sample(self):
         with self.assertRaisesRegex(
             ValueError,
-            "Missing from proteins: samp2. Only in proteins: none",
+            "Missing from proteins: samp2",
         ):
             _get_sample_ids(
                 _Contigs(
@@ -107,17 +107,7 @@ class TestDASTool(TestPluginBase):
                 {"samp1"},
             )
 
-    def test_get_sample_ids_extra_protein_sample(self):
-        with self.assertRaisesRegex(
-            ValueError,
-            "Missing from proteins: none. Only in proteins: samp2",
-        ):
-            _get_sample_ids(
-                _Contigs({"samp1": "samp1_contigs.fa"}),
-                {"samp1", "samp2"},
-            )
-
-    def test_get_sample_ids_matching_samples(self):
+    def test_get_sample_ids_allows_extra_bin_and_protein_samples(self):
         observed = _get_sample_ids(
             _Contigs(
                 {
@@ -125,11 +115,12 @@ class TestDASTool(TestPluginBase):
                     "samp1": "samp1_contigs.fa",
                 }
             ),
-            {"samp1", "samp2"},
+            {"samp1", "samp2", "extra-protein-sample"},
             _Bins(
                 {
                     "samp1": {"bin_1": "bin_1.fa"},
                     "samp2": {"bin_2": "bin_2.fa"},
+                    "extra-bin-sample": {"bin_3": "bin_3.fa"},
                 }
             ),
         )
