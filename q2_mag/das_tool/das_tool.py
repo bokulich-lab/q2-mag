@@ -110,6 +110,11 @@ def _run_das_tool(
     if proteins_fp is not None:
         proteins_fp = shutil.copy(proteins_fp, input_dir)
 
+    # Avoid DAS_Tool locale warnings.
+    env = os.environ.copy()
+    env["LANG"] = "C"
+    env["LC_ALL"] = "C"
+
     output_prefix = os.path.join(output_dir, sample_id)
     cmd = [
         "DAS_Tool",
@@ -129,7 +134,7 @@ def _run_das_tool(
         cmd.extend(["--proteins", proteins_fp])
 
     cmd.extend(common_args)
-    run_command(cmd, verbose=True)
+    run_command(cmd, verbose=True, env=env)
 
     return (
         f"{output_prefix}_DASTool_bins",
