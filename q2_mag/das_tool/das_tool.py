@@ -9,6 +9,7 @@ import glob
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import warnings
 from uuid import uuid4
@@ -134,7 +135,19 @@ def _run_das_tool(
         cmd.extend(["--proteins", proteins_fp])
 
     cmd.extend(common_args)
-    run_command(cmd, verbose=True, env=env)
+    try:
+        result = run_command(cmd, verbose=True, env=env, pipe=True)
+    except subprocess.CalledProcessError as error:
+        if error.stdout:
+            print(error.stdout, end="", file=sys.stdout)
+        if error.stderr:
+            print(error.stderr, end="", file=sys.stderr)
+        raise
+
+    if result.stdout:
+        print(result.stdout, end="", file=sys.stdout)
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
 
     return (
         f"{output_prefix}_DASTool_bins",
@@ -238,12 +251,23 @@ def _refine_bins_das_tool(
                     common_args=common_args,
                     output_dir=tmp,
                 )
-            except subprocess.CalledProcessError:
-                warnings.warn(
-                    f"No bins produced for sample {sample_id}.",
-                    UserWarning,
+            except subprocess.CalledProcessError as e:
+                no_bins = any(
+                    line.startswith("Error:  No bins with bin-score >")
+                    for line in (e.stdout or "").splitlines()
                 )
-                failed_samples.append(sample_id)
+                if no_bins:
+                    warnings.warn(
+                        f"No bins produced for sample {sample_id}.",
+                        UserWarning,
+                    )
+                    failed_samples.append(sample_id)
+                else:
+                    raise Exception(
+                        "An error was encountered while running DAS Tool, "
+                        f"(return code {e.returncode}), please inspect "
+                        "stdout and stderr to learn more."
+                    ) from e
             else:
                 # Do not append summary files if no refined bins were recovered
                 concatenated_summary = _append_summary(

@@ -187,7 +187,7 @@ class TestDASTool(TestPluginBase):
         bins_path = self.get_data_path("bins")
         contig_fp = os.path.join(self.get_data_path("contigs"), "samp1_contigs.fa")
 
-        def _mock_das_tool(cmd, check, env):
+        def _mock_das_tool(cmd, check, env, capture_output, text):
             self.assertEqual(env["LANG"], "C")
             self.assertEqual(env["LC_ALL"], "C")
             output_prefix = cmd[cmd.index("--outputbasename") + 1]
@@ -201,6 +201,7 @@ class TestDASTool(TestPluginBase):
             pd.DataFrame(
                 {"bin": ["input"], "bin_set": ["metabat"], "bin_score": ["0.9"]}
             ).to_csv(f"{output_prefix}_allBins.eval", sep="\t", index=False)
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         subp_run.side_effect = _mock_das_tool
 
@@ -256,7 +257,7 @@ class TestDASTool(TestPluginBase):
         bin_1 = os.path.join(bins_path, "bin_1_samp1.fa")
         bin_2 = os.path.join(bins_path, "bin_2_samp1.fa")
 
-        def _mock_das_tool(cmd, check, env):
+        def _mock_das_tool(cmd, check, env, capture_output, text):
             self.assertEqual(env["LANG"], "C")
             self.assertEqual(env["LC_ALL"], "C")
             output_prefix = cmd[cmd.index("--outputbasename") + 1]
@@ -271,8 +272,17 @@ class TestDASTool(TestPluginBase):
                 pd.DataFrame(
                     {"bin": ["input"], "bin_set": ["metabat"], "bin_score": ["0.9"]}
                 ).to_csv(f"{output_prefix}_allBins.eval", sep="\t", index=False)
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
             else:
-                raise subprocess.CalledProcessError(1, cmd)
+                raise subprocess.CalledProcessError(
+                    1,
+                    cmd,
+                    output=(
+                        "DAS Tool output\n"
+                        "Error:  No bins with bin-score >0.6 found. Adjust "
+                        "score_threshold to report bins with lower quality.\n"
+                    ),
+                )
 
         subp_run.side_effect = _mock_das_tool
 
@@ -328,6 +338,10 @@ class TestDASTool(TestPluginBase):
         with open(proteins_path, "w") as fh:
             fh.write(">protein\nM\n")
 
+        run_command.return_value = subprocess.CompletedProcess(
+            ["DAS_Tool"], 0, stdout="", stderr=""
+        )
+
         obs_bins, obs_summary, obs_evaluation = _run_das_tool(
             sample_id="samp1",
             bins=[
@@ -348,6 +362,7 @@ class TestDASTool(TestPluginBase):
 
         self.assertEqual(env["LANG"], "C")
         self.assertEqual(env["LC_ALL"], "C")
+        self.assertTrue(run_command.call_args.kwargs["pipe"])
         self.assertNotEqual(staged_contigs_path, contig_path)
         self.assertTrue(staged_contigs_path.startswith(self.temp_dir.name))
         self.assertTrue(os.path.exists(staged_contigs_path))
@@ -370,7 +385,14 @@ class TestDASTool(TestPluginBase):
         bins_path = self.get_data_path("bins")
         contig_fp = os.path.join(self.get_data_path("contigs"), "samp1_contigs.fa")
 
-        subp_run.side_effect = subprocess.CalledProcessError(1, ["DAS_Tool"])
+        subp_run.side_effect = subprocess.CalledProcessError(
+            1,
+            ["DAS_Tool"],
+            output=(
+                "Error:  No bins with bin-score >0.6 found. Adjust score_threshold "
+                "to report bins with lower quality.\n"
+            ),
+        )
 
         with warnings.catch_warnings(record=True) as warning_records:
             warnings.simplefilter("always")
@@ -387,6 +409,26 @@ class TestDASTool(TestPluginBase):
         warning_messages = [str(record.message) for record in warning_records]
         self.assertIn("No bins produced for sample samp1.", warning_messages)
         self.assertIn("No bins produced for sample(s): samp1.", warning_messages)
+
+    @patch("subprocess.run")
+    def test_refine_bins_das_tool_raises_on_other_errors(self, subp_run):
+        bins_path = self.get_data_path("bins")
+        contig_fp = os.path.join(self.get_data_path("contigs"), "samp1_contigs.fa")
+        subp_run.side_effect = subprocess.CalledProcessError(
+            1,
+            ["DAS_Tool"],
+            output="Error: Another DAS Tool error.\n",
+        )
+
+        with self.assertRaisesRegex(Exception, "error was encountered"):
+            refine_bins_das_tool(
+                bins=[
+                    _Bins({"bin_1": os.path.join(bins_path, "bin_1_samp1.fa")}),
+                    _Bins({"bin_2": os.path.join(bins_path, "bin_2_samp1.fa")}),
+                ],
+                contigs=_Contigs(contig_fp),
+                score_threshold=0.6,
+            )
 
     def test_refine_bins_das_tool_requires_two_binnings(self):
         bins = MultiFASTADirectoryFormat(self.get_data_path("sample_data_mags"), "r")
