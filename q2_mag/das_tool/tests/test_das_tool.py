@@ -6,6 +6,7 @@
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
 import glob
+import io
 import os
 import shutil
 import subprocess
@@ -81,15 +82,42 @@ class TestDASTool(TestPluginBase):
     def test_generate_labels(self):
         self.assertEqual(_generate_labels(3), ["binning_1", "binning_2", "binning_3"])
 
-    def test_get_sample_ids_mismatched_samples(self):
+    def test_get_sample_ids_inconsistent_bin_samples(self):
         with self.assertRaisesRegex(
             ValueError,
-            "Missing from bins: samp1",
+            r"Sample IDs must stay consistent across all bins\.\n"
+            r"Missing sample IDs by bin:\n"
+            r"- metabat: samp2\n"
+            r"- semibin: samp1",
         ):
             _get_sample_ids(
+                ["metabat", "semibin"],
+                _Contigs(
+                    {
+                        "samp1": "samp1_contigs.fa",
+                        "samp2": "samp2_contigs.fa",
+                    }
+                ),
+                None,
+                _Bins({"samp1": {"bin_1": "bin_1.fa"}}),
+                _Bins({"samp2": {"bin_2": "bin_2.fa"}}),
+            )
+
+    def test_get_sample_ids_missing_contig_sample(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "Missing from contigs: samp2",
+        ):
+            _get_sample_ids(
+                ["metabat"],
                 _Contigs({"samp1": "samp1_contigs.fa"}),
                 None,
-                _Bins({"samp2": {"bin_1": "bin_1.fa"}}),
+                _Bins(
+                    {
+                        "samp1": {"bin_1": "bin_1.fa"},
+                        "samp2": {"bin_2": "bin_2.fa"},
+                    }
+                ),
             )
 
     def test_get_sample_ids_missing_protein_sample(self):
@@ -98,6 +126,7 @@ class TestDASTool(TestPluginBase):
             "Missing from proteins: samp2",
         ):
             _get_sample_ids(
+                ["metabat"],
                 _Contigs(
                     {
                         "samp1": "samp1_contigs.fa",
@@ -105,14 +134,22 @@ class TestDASTool(TestPluginBase):
                     }
                 ),
                 {"samp1"},
+                _Bins(
+                    {
+                        "samp1": {"bin_1": "bin_1.fa"},
+                        "samp2": {"bin_2": "bin_2.fa"},
+                    }
+                ),
             )
 
-    def test_get_sample_ids_allows_extra_bin_and_protein_samples(self):
+    def test_get_sample_ids_allows_extra_contig_and_protein_samples(self):
         observed = _get_sample_ids(
+            ["metabat"],
             _Contigs(
                 {
                     "samp2": "samp2_contigs.fa",
                     "samp1": "samp1_contigs.fa",
+                    "extra-contig-sample": "extra_contigs.fa",
                 }
             ),
             {"samp1", "samp2", "extra-protein-sample"},
@@ -120,7 +157,6 @@ class TestDASTool(TestPluginBase):
                 {
                     "samp1": {"bin_1": "bin_1.fa"},
                     "samp2": {"bin_2": "bin_2.fa"},
-                    "extra-bin-sample": {"bin_3": "bin_3.fa"},
                 }
             ),
         )
@@ -339,21 +375,28 @@ class TestDASTool(TestPluginBase):
             fh.write(">protein\nM\n")
 
         run_command.return_value = subprocess.CompletedProcess(
-            ["DAS_Tool"], 0, stdout="", stderr=""
+            ["DAS_Tool"],
+            0,
+            stdout="DAS Tool output\n",
+            stderr="DAS Tool warning\n",
         )
 
-        obs_bins, obs_summary, obs_evaluation = _run_das_tool(
-            sample_id="samp1",
-            bins=[
-                _Bins({"bin_1": bin1_path}),
-                _Bins({"bin_2": bin2_path}),
-            ],
-            contigs_fp=contig_path,
-            proteins_fp=proteins_path,
-            labels=["binning_1", "binning_2"],
-            common_args=["--threads", "1"],
-            output_dir=self.temp_dir.name,
-        )
+        with (
+            patch("sys.stdout", new_callable=io.StringIO) as stdout,
+            patch("sys.stderr", new_callable=io.StringIO) as stderr,
+        ):
+            obs_bins, obs_summary, obs_evaluation = _run_das_tool(
+                sample_id="samp1",
+                bins=[
+                    _Bins({"bin_1": bin1_path}),
+                    _Bins({"bin_2": bin2_path}),
+                ],
+                contigs_fp=contig_path,
+                proteins_fp=proteins_path,
+                labels=["binning_1", "binning_2"],
+                common_args=["--threads", "1"],
+                output_dir=self.temp_dir.name,
+            )
 
         cmd = run_command.call_args.args[0]
         env = run_command.call_args.kwargs["env"]
@@ -370,6 +413,8 @@ class TestDASTool(TestPluginBase):
         self.assertNotEqual(staged_proteins_path, proteins_path)
         self.assertTrue(staged_proteins_path.startswith(self.temp_dir.name))
         self.assertTrue(os.path.exists(staged_proteins_path))
+        self.assertEqual(stdout.getvalue(), "DAS Tool output\n")
+        self.assertEqual(stderr.getvalue(), "DAS Tool warning\n")
         self.assertEqual(
             obs_bins, os.path.join(self.temp_dir.name, "samp1_DASTool_bins")
         )
@@ -379,6 +424,39 @@ class TestDASTool(TestPluginBase):
         self.assertEqual(
             obs_evaluation, os.path.join(self.temp_dir.name, "samp1_allBins.eval")
         )
+
+    @patch("q2_mag.das_tool.das_tool.run_command")
+    def test_run_das_tool_prints_streams_on_error(self, run_command):
+        contigs_path = self.get_data_path("contigs")
+        bins_path = self.get_data_path("bins")
+        error = subprocess.CalledProcessError(
+            1,
+            ["DAS_Tool"],
+            output="DAS Tool output\n",
+            stderr="DAS Tool error\n",
+        )
+        run_command.side_effect = error
+
+        with (
+            patch("sys.stdout", new_callable=io.StringIO) as stdout,
+            patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            self.assertRaises(subprocess.CalledProcessError),
+        ):
+            _run_das_tool(
+                sample_id="samp1",
+                bins=[
+                    _Bins({"bin_1": os.path.join(bins_path, "bin_1_samp1.fa")}),
+                    _Bins({"bin_2": os.path.join(bins_path, "bin_2_samp1.fa")}),
+                ],
+                contigs_fp=os.path.join(contigs_path, "samp1_contigs.fa"),
+                proteins_fp=None,
+                labels=["binning_1", "binning_2"],
+                common_args=["--threads", "1"],
+                output_dir=self.temp_dir.name,
+            )
+
+        self.assertEqual(stdout.getvalue(), "DAS Tool output\n")
+        self.assertEqual(stderr.getvalue(), "DAS Tool error\n")
 
     @patch("subprocess.run")
     def test_refine_bins_das_tool_fails_when_all_samples_fail(self, subp_run):

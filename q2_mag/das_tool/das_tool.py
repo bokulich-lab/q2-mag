@@ -47,32 +47,56 @@ def _process_das_tool_arg(arg_key, arg_val):
 
 
 def _get_sample_ids(
+    labels: list[str],
     contigs: ContigSequencesDirFmt,
-    protein_ids: list[str] | None = None,
+    protein_samples: set[str] | None = None,
     *bins: MultiFASTADirectoryFormat,
 ) -> list[str]:
-    contig_ids = set(contigs.sample_dict())
-
+    # 1. Ensure that sample IDs are consistent across all bins.
+    bin_samples = set()
     for mag in bins:
-        bin_ids = set(mag.sample_dict())
-        missing = contig_ids - bin_ids
+        bin_samples.update(set(mag.sample_dict()))
+
+    inconsistent_bin_samples = {}
+    for idx in range(len(bins)):
+        missing = bin_samples - set(bins[idx].sample_dict())
+        if missing:
+            inconsistent_bin_samples[idx] = missing
+
+    if len(inconsistent_bin_samples) >= 1:
+        missing_rows = []
+
+        for idx, missing in inconsistent_bin_samples.items():
+            missing_sample_ids = ", ".join(sorted(missing))
+            missing_rows.append(f"- {labels[idx]}: {missing_sample_ids}")
+
+        raise ValueError(
+            f"Sample IDs must stay consistent across all bins.\n"
+            f"Missing sample IDs by bin:\n"
+            f"{'\n'.join(missing_rows)}"
+        )
+
+    # 2. Assert that the contig sample IDs contain all sample IDs in bins.
+    contig_samples = set(contigs.sample_dict())
+    missing = bin_samples - contig_samples
+
+    if len(missing) >= 1:
+        raise ValueError(
+            "Contigs must contain all sample IDs present in bins. "
+            f"Missing from contigs: {', '.join(sorted(missing)) or 'none'}."
+        )
+
+    # 3. If proteins are provided, assert that their sample IDs matches those of bins.
+    if protein_samples is not None:
+        missing = bin_samples - protein_samples
 
         if len(missing) >= 1:
             raise ValueError(
-                "Bins must contain all sample IDs present in contigs"
-                f"Missing from bins: {', '.join(sorted(missing)) or 'none'}. "
+                "Proteins must contain all sample IDs present in bins. "
+                f"Missing from proteins: {', '.join(sorted(missing)) or 'none'}."
             )
 
-    if protein_ids is not None:
-        missing = contig_ids - protein_ids
-
-        if len(missing) >= 1:
-            raise ValueError(
-                "Proteins must contain all sample IDs present in contigs"
-                f"Missing from proteins: {', '.join(sorted(missing)) or 'none'}. "
-            )
-
-    return sorted(contig_ids)
+    return sorted(bin_samples)
 
 
 def _write_contig2bin_map(bins, sample_id, label, output_dir):
@@ -135,19 +159,18 @@ def _run_das_tool(
         cmd.extend(["--proteins", proteins_fp])
 
     cmd.extend(common_args)
-    try:
-        result = run_command(cmd, verbose=True, env=env, pipe=True)
-    except subprocess.CalledProcessError as error:
-        if error.stdout:
-            print(error.stdout, end="", file=sys.stdout)
-        if error.stderr:
-            print(error.stderr, end="", file=sys.stderr)
-        raise
 
-    if result.stdout:
-        print(result.stdout, end="", file=sys.stdout)
-    if result.stderr:
-        print(result.stderr, end="", file=sys.stderr)
+    def _print_streams(obj):
+        if obj.stdout:
+            print(obj.stdout, end="", file=sys.stdout)
+        if obj.stderr:
+            print(obj.stderr, end="", file=sys.stderr)
+
+    try:
+        _print_streams(run_command(cmd, verbose=True, env=env, pipe=True))
+    except subprocess.CalledProcessError as error:
+        _print_streams(error)
+        raise
 
     return (
         f"{output_prefix}_DASTool_bins",
@@ -225,9 +248,9 @@ def _refine_bins_das_tool(
     else:
         labels = _generate_labels(len(bins))
 
-    sample_proteins = proteins.file_dict() if proteins is not None else {}
-    protein_ids = sample_proteins.keys() if proteins is not None else None
-    sample_ids = _get_sample_ids(contigs, protein_ids, *bins)
+    protein_records = proteins.file_dict() if proteins is not None else {}
+    protein_samples = set(protein_records.keys()) if proteins is not None else None
+    sample_ids = _get_sample_ids(labels, contigs, protein_samples, *bins)
     concatenated_summary = None
     concatenated_evaluation = None
     refined_bins = MultiFASTADirectoryFormat()
@@ -246,7 +269,7 @@ def _refine_bins_das_tool(
                     sample_id=sample_id,
                     bins=bins,
                     contigs_fp=contigs.sample_dict()[sample_id],
-                    proteins_fp=sample_proteins.get(sample_id),
+                    proteins_fp=protein_records.get(sample_id),
                     labels=labels,
                     common_args=common_args,
                     output_dir=tmp,
@@ -286,7 +309,7 @@ def _refine_bins_das_tool(
     # Report the names of samples that failed to produce any bins
     if failed_samples:
         warnings.warn(
-            "No bins produced for sample(s): " + ", ".join(failed_samples) + ".",
+            f"No bins produced for sample(s): {', '.join(failed_samples)}.",
             UserWarning,
         )
 
