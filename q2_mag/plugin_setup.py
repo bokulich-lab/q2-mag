@@ -33,7 +33,7 @@ from q2_types.per_sample_sequences import (
 )
 from q2_types.sample_data import SampleData
 from q2_types.metadata import ImmutableMetadata
-from q2_types.feature_map import FeatureMap, MAGtoContigs
+from q2_types.feature_map import FeatureMap, MAGtoContigs, TaxonomyToContigs
 from qiime2.core.type import (
     Bool,
     Range,
@@ -509,6 +509,50 @@ plugin.methods.register_function(
         "This method estimates MAG/contig abundances by mapping the "
         "reads to them and calculating respective metric values"
         "which are then used as a proxy for the frequency."
+    ),
+    citations=[],
+)
+
+plugin.methods.register_function(
+    function=q2_mag.vamb.bin_contigs_vamb,
+    inputs={
+        "fasta": SampleData[Contigs],
+        "bamdir": SampleData[AlignmentMap % Properties("sorted")],
+        "taxonomy": FeatureMap[TaxonomyToContigs],
+    },
+    parameters={
+        "min_contig_len": Int % Range(1, None),
+        "minfasta": Int % Range(1, None),
+        "threads": Int % Range(0, None),
+        "seed": Int % Range(0, None),
+    },
+    outputs=[
+        ("mags", SampleData[MAGs]),
+        ("contig_map", FeatureMap[MAGtoContigs]),
+    ],
+    input_descriptions={
+        "fasta": "Input contigs to use.",
+        "bamdir": "Reads-to-contig alignment maps to use.",
+    },
+    parameter_descriptions={
+        "min_contig_len": "Ignore contigs shorter than this value (bp).",
+        "minfasta": (
+            "Output all bins with a total size (sum of contig lengths) greater than "
+            "or equal to this number."
+        ),
+    },
+    output_descriptions={
+        "mags": "The resulting MAGs.",
+        "contig_map": (
+            "Mapping of MAG identifiers to the contig identifiers "
+            "contained in each MAG."
+        ),
+    },
+    name="Bin contigs into MAGs using VAMB.",
+    description=(
+        "This method uses VAMB to bin the provided contigs into MAGs. "
+        "Reference hash checking between composition, abundance and taxonomic inputs "
+        "is always performed (i.e., --norefcheck is never set)."
     ),
     citations=[],
 )
