@@ -9,7 +9,6 @@ import glob
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
 import warnings
 from uuid import uuid4
@@ -23,6 +22,7 @@ from q2_types.per_sample_sequences import (
     ContigSequencesDirFmt,
     MultiFASTADirectoryFormat,
 )
+from q2_mag.das_tool.utils import _print_streams
 
 SUMMARY_DTYPES = {
     "bin": str,
@@ -71,9 +71,8 @@ def _get_sample_ids(
             missing_rows.append(f"- {labels[idx]}: {missing_sample_ids}")
 
         raise ValueError(
-            f"Sample IDs must stay consistent across all bins.\n"
-            f"Missing sample IDs by bin:\n"
-            f"{'\n'.join(missing_rows)}"
+            "Sample IDs must stay consistent across all bins.\n"
+            "Missing sample IDs by bin:\n" + "\n".join(missing_rows)
         )
 
     # 2. Assert that the contig sample IDs contain all sample IDs in bins.
@@ -159,12 +158,6 @@ def _run_das_tool(
         cmd.extend(["--proteins", proteins_fp])
 
     cmd.extend(common_args)
-
-    def _print_streams(obj):
-        if obj.stdout:
-            print(obj.stdout, end="", file=sys.stdout)
-        if obj.stderr:
-            print(obj.stderr, end="", file=sys.stderr)
 
     try:
         _print_streams(run_command(cmd, verbose=True, env=env, pipe=True))
