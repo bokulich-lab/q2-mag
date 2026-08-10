@@ -1,0 +1,5 @@
+bin	bin_set	unique_SCGs	redundant_SCGs	SCG_set	size	contigs	N50	bin_score	SCG_completeness	SCG_redundancy
+Bin_001	Method_A	46	0	bacteria	5196842	78	117936	0.905882352941176	90	0
+Bin_002	Method_B	40	1	bacteria	6427318	10	1689476	0.756862745098039	78	2
+Bin_003	Method_C	35	0	bacteria	2631948	41	88427	0.686274509803922	69	0
+Bin_004	Method_A	35	0	bacteria	1098236	31	55874	0.686274509803922	69	0

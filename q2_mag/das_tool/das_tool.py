@@ -49,19 +49,18 @@ def _process_das_tool_arg(arg_key, arg_val):
 def _get_sample_ids(
     labels: list[str],
     contigs: ContigSequencesDirFmt,
-    protein_samples: set[str] | None = None,
+    proteins: ProteinsDirectoryFormat | None = None,
     *bins: MultiFASTADirectoryFormat,
 ) -> list[str]:
     # 1. Ensure that sample IDs are consistent across all bins.
-    bin_samples = set()
-    for mag in bins:
-        bin_samples.update(set(mag.sample_dict()))
+    bin_sample_sets = [set(x.sample_dict()) for x in bins]
+    bin_samples = set().union(*bin_sample_sets)
 
-    inconsistent_bin_samples = {}
-    for idx in range(len(bins)):
-        missing = bin_samples - set(bins[idx].sample_dict())
-        if missing:
-            inconsistent_bin_samples[idx] = missing
+    inconsistent_bin_samples = {
+        idx: missing
+        for idx, bin_set in enumerate(bin_sample_sets)
+        if (missing := bin_samples - bin_set)
+    }
 
     if len(inconsistent_bin_samples) >= 1:
         missing_rows = []
@@ -85,8 +84,9 @@ def _get_sample_ids(
             f"Missing from contigs: {', '.join(sorted(missing)) or 'none'}."
         )
 
-    # 3. If proteins are provided, assert that their sample IDs matches those of bins.
-    if protein_samples is not None:
+    # 3. If proteins are provided, assert that their sample IDs match those of bins.
+    if proteins is not None:
+        protein_samples = set(proteins.file_dict().keys())
         missing = bin_samples - protein_samples
 
         if len(missing) >= 1:
@@ -242,8 +242,7 @@ def _refine_bins_das_tool(
         labels = _generate_labels(len(bins))
 
     protein_records = proteins.file_dict() if proteins is not None else {}
-    protein_samples = set(protein_records.keys()) if proteins is not None else None
-    sample_ids = _get_sample_ids(labels, contigs, protein_samples, *bins)
+    sample_ids = _get_sample_ids(labels, contigs, proteins, *bins)
     concatenated_summary = None
     concatenated_evaluation = None
     refined_bins = MultiFASTADirectoryFormat()
