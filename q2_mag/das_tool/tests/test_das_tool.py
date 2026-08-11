@@ -1,15 +1,13 @@
 # ----------------------------------------------------------------------------
-# Copyright (c) 2025, QIIME 2 development team.
+# Copyright (c) 2026, QIIME 2 development team.
 #
 # Distributed under the terms of the Modified BSD License.
 #
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
-import glob
 import io
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import tempfile
 import unittest
@@ -22,10 +20,11 @@ from q2_types.per_sample_sequences import (
     ContigSequencesDirFmt,
     MultiFASTADirectoryFormat,
 )
-from qiime2.plugin.testing import TestPluginBase
+from rachis.plugin.testing import TestPluginBase
 
 from q2_mag.das_tool.das_tool import (
     _append_summary,
+    _collect_refined_bins,
     _get_sample_ids,
     _generate_labels,
     _parse_labels,
@@ -77,9 +76,9 @@ class TestDASTool(TestPluginBase):
         self.assertEqual(_generate_labels(3), ["binning_1", "binning_2", "binning_3"])
 
     def test_get_sample_ids_inconsistent_bin_samples(self):
-        input_contigs = self.get_data_path("contigs")
-        input_bins_1 = self.get_data_path("bins-single-sample")
-        input_bins_2 = self.get_data_path("bins")
+        input_contigs = self.get_data_path("contigs/two-samples")
+        input_bins_1 = self.get_data_path("bins/single-sample")
+        input_bins_2 = self.get_data_path("bins/two-samples")
         contigs = ContigSequencesDirFmt(input_contigs, mode="r")
         bins_1 = MultiFASTADirectoryFormat(input_bins_1, mode="r")
         bins_2 = MultiFASTADirectoryFormat(input_bins_2, mode="r")
@@ -99,8 +98,8 @@ class TestDASTool(TestPluginBase):
             )
 
     def test_get_sample_ids_missing_contig_sample(self):
-        input_contigs = self.get_data_path("contigs-single-sample")
-        input_bins = self.get_data_path("bins")
+        input_contigs = self.get_data_path("contigs/single-sample")
+        input_bins = self.get_data_path("bins/two-samples")
         contigs = ContigSequencesDirFmt(input_contigs, mode="r")
         bins = MultiFASTADirectoryFormat(input_bins, mode="r")
 
@@ -116,9 +115,9 @@ class TestDASTool(TestPluginBase):
             )
 
     def test_get_sample_ids_missing_protein_sample(self):
-        input_contigs = self.get_data_path("contigs")
-        input_bins = self.get_data_path("bins")
-        input_proteins = self.get_data_path("proteins-single-sample")
+        input_contigs = self.get_data_path("contigs/two-samples")
+        input_bins = self.get_data_path("bins/two-samples")
+        input_proteins = self.get_data_path("proteins/single-sample")
         contigs = ContigSequencesDirFmt(input_contigs, mode="r")
         bins = MultiFASTADirectoryFormat(input_bins, mode="r")
         proteins = ProteinsDirectoryFormat(input_proteins, mode="r")
@@ -135,9 +134,9 @@ class TestDASTool(TestPluginBase):
             )
 
     def test_get_sample_ids_allows_extra_contig_and_protein_samples(self):
-        input_contigs = self.get_data_path("contigs")
-        input_bins = self.get_data_path("bins-single-sample")
-        input_proteins = self.get_data_path("proteins")
+        input_contigs = self.get_data_path("contigs/two-samples")
+        input_bins = self.get_data_path("bins/single-sample")
+        input_proteins = self.get_data_path("proteins/two-samples")
         contigs = ContigSequencesDirFmt(input_contigs, mode="r")
         bins = MultiFASTADirectoryFormat(input_bins, mode="r")
         proteins = ProteinsDirectoryFormat(input_proteins, mode="r")
@@ -152,7 +151,7 @@ class TestDASTool(TestPluginBase):
         self.assertEqual(observed, ["samp1"])
 
     def test_write_contig2bin_map(self):
-        input_bins = self.get_data_path("bins")
+        input_bins = self.get_data_path("bins/two-samples")
         bins = MultiFASTADirectoryFormat(input_bins, mode="r")
 
         with tempfile.TemporaryDirectory() as fake_loc:
@@ -195,9 +194,9 @@ class TestDASTool(TestPluginBase):
     @patch("q2_mag.das_tool.das_tool._get_sample_ids")
     @patch("q2_mag.das_tool.das_tool._parse_labels")
     def test_refine_bins_das_tool(self, p1, p2, p3, p4, p5):
-        bins1_dirpath = self.get_data_path("mags/binning_1")
-        bins2_dirpath = self.get_data_path("mags/binning_2")
-        contigs_dirpath = self.get_data_path("contigs")
+        bins1_dirpath = self.get_data_path("bins/semibin_run1")
+        bins2_dirpath = self.get_data_path("bins/semibin_run2")
+        contigs_dirpath = self.get_data_path("contigs/two-samples")
         bins1 = MultiFASTADirectoryFormat(bins1_dirpath, mode="r")
         bins2 = MultiFASTADirectoryFormat(bins2_dirpath, mode="r")
         contigs = ContigSequencesDirFmt(contigs_dirpath, mode="r")
@@ -253,7 +252,7 @@ class TestDASTool(TestPluginBase):
         p3.assert_called_once_with(
             sample_id="samp2",
             bins=[bins1, bins2],
-            contigs_fp=self.get_data_path("contigs/samp2_contigs.fa"),
+            contigs_fp=self.get_data_path("contigs/two-samples/samp2_contigs.fa"),
             proteins_fp=None,
             labels=["binning_1", "binning_2"],
             common_args=args,
@@ -283,9 +282,9 @@ class TestDASTool(TestPluginBase):
     def test_refine_bins_das_tool_warns_and_continues_when_samples_fail(
         self, p1, p2, p3, p4, p5
     ):
-        bins1_dirpath = self.get_data_path("mags/binning_1")
-        bins2_dirpath = self.get_data_path("mags/binning_2")
-        contigs_dirpath = self.get_data_path("contigs")
+        bins1_dirpath = self.get_data_path("bins/semibin_run1")
+        bins2_dirpath = self.get_data_path("bins/semibin_run2")
+        contigs_dirpath = self.get_data_path("contigs/two-samples")
         bins1 = MultiFASTADirectoryFormat(bins1_dirpath, mode="r")
         bins2 = MultiFASTADirectoryFormat(bins2_dirpath, mode="r")
         contigs = ContigSequencesDirFmt(contigs_dirpath, mode="r")
@@ -343,7 +342,9 @@ class TestDASTool(TestPluginBase):
                 call(
                     sample_id="samp1",
                     bins=[bins1, bins2],
-                    contigs_fp=self.get_data_path("contigs/samp1_contigs.fa"),
+                    contigs_fp=self.get_data_path(
+                        "contigs/two-samples/samp1_contigs.fa"
+                    ),
                     proteins_fp=None,
                     labels=["binning_1", "binning_2"],
                     common_args=args,
@@ -352,7 +353,9 @@ class TestDASTool(TestPluginBase):
                 call(
                     sample_id="samp2",
                     bins=[bins1, bins2],
-                    contigs_fp=self.get_data_path("contigs/samp2_contigs.fa"),
+                    contigs_fp=self.get_data_path(
+                        "contigs/two-samples/samp2_contigs.fa"
+                    ),
                     proteins_fp=None,
                     labels=["binning_1", "binning_2"],
                     common_args=args,
@@ -388,14 +391,14 @@ class TestDASTool(TestPluginBase):
     @patch("q2_mag.das_tool.das_tool._run_das_tool")
     @patch("q2_mag.das_tool.das_tool._get_sample_ids")
     @patch("q2_mag.das_tool.das_tool._parse_labels")
-    def test_run_das_tool_with_proteins(self, p1, p2, p3, p4, p5):
-        bins1_dirpath = self.get_data_path("mags/binning_1")
-        bins2_dirpath = self.get_data_path("mags/binning_2")
-        contigs_dirpath = self.get_data_path("contigs")
+    def test_refine_bins_das_tool_with_proteins(self, p1, p2, p3, p4, p5):
+        bins1_dirpath = self.get_data_path("bins/semibin_run1")
+        bins2_dirpath = self.get_data_path("bins/semibin_run2")
+        contigs_dirpath = self.get_data_path("contigs/two-samples")
         bins1 = MultiFASTADirectoryFormat(bins1_dirpath, mode="r")
         bins2 = MultiFASTADirectoryFormat(bins2_dirpath, mode="r")
         contigs = ContigSequencesDirFmt(contigs_dirpath, mode="r")
-        proteins_dirpath = self.get_data_path("proteins")
+        proteins_dirpath = self.get_data_path("proteins/two-samples")
         proteins = ProteinsDirectoryFormat(proteins_dirpath, mode="r")
         cat_summary, cat_evaluation = self._get_concatenated_outputs()
 
@@ -449,8 +452,8 @@ class TestDASTool(TestPluginBase):
         p3.assert_called_once_with(
             sample_id="samp2",
             bins=[bins1, bins2],
-            contigs_fp=self.get_data_path("contigs/samp2_contigs.fa"),
-            proteins_fp=self.get_data_path("proteins/samp2.fasta"),
+            contigs_fp=self.get_data_path("contigs/two-samples/samp2_contigs.fa"),
+            proteins_fp=self.get_data_path("proteins/two-samples/samp2.fasta"),
             labels=["binning_1", "binning_2"],
             common_args=args,
             output_dir=ANY,
@@ -475,11 +478,11 @@ class TestDASTool(TestPluginBase):
     @patch("sys.stdout", new_callable=io.StringIO)
     @patch("q2_mag.das_tool.das_tool.run_command")
     def test_run_das_tool_prints_streams_on_error(self, p1, p2, p3):
-        bins1_dirpath = self.get_data_path("mags/binning_1")
-        bins2_dirpath = self.get_data_path("mags/binning_2")
+        bins1_dirpath = self.get_data_path("bins/semibin_run1")
+        bins2_dirpath = self.get_data_path("bins/semibin_run2")
         bins1 = MultiFASTADirectoryFormat(bins1_dirpath, mode="r")
         bins2 = MultiFASTADirectoryFormat(bins2_dirpath, mode="r")
-        contigs_fp = self.get_data_path("contigs/samp2_contigs.fa")
+        contigs_fp = self.get_data_path("contigs/two-samples/samp2_contigs.fa")
 
         p1.side_effect = subprocess.CalledProcessError(
             1,
@@ -504,9 +507,9 @@ class TestDASTool(TestPluginBase):
 
     @patch("subprocess.run")
     def test_refine_bins_das_tool_fails_when_all_samples_fail(self, p1):
-        bins1_dirpath = self.get_data_path("mags/binning_1")
-        bins2_dirpath = self.get_data_path("mags/binning_2")
-        contigs_dirpath = self.get_data_path("contigs")
+        bins1_dirpath = self.get_data_path("bins/semibin_run1")
+        bins2_dirpath = self.get_data_path("bins/semibin_run2")
+        contigs_dirpath = self.get_data_path("contigs/two-samples")
         bins1 = MultiFASTADirectoryFormat(bins1_dirpath, mode="r")
         bins2 = MultiFASTADirectoryFormat(bins2_dirpath, mode="r")
         contigs = ContigSequencesDirFmt(contigs_dirpath, mode="r")
@@ -534,9 +537,9 @@ class TestDASTool(TestPluginBase):
 
     @patch("subprocess.run")
     def test_refine_bins_das_tool_raises_on_other_errors(self, p1):
-        bins1_dirpath = self.get_data_path("mags/binning_1")
-        bins2_dirpath = self.get_data_path("mags/binning_2")
-        contigs_dirpath = self.get_data_path("contigs")
+        bins1_dirpath = self.get_data_path("bins/semibin_run1")
+        bins2_dirpath = self.get_data_path("bins/semibin_run2")
+        contigs_dirpath = self.get_data_path("contigs/two-samples")
         bins1 = MultiFASTADirectoryFormat(bins1_dirpath, mode="r")
         bins2 = MultiFASTADirectoryFormat(bins2_dirpath, mode="r")
         contigs = ContigSequencesDirFmt(contigs_dirpath, mode="r")
@@ -555,8 +558,8 @@ class TestDASTool(TestPluginBase):
             )
 
     def test_refine_bins_das_tool_requires_two_binnings(self):
-        input_contigs = self.get_data_path("contigs")
-        input_bins = self.get_data_path("bins")
+        input_contigs = self.get_data_path("contigs/two-samples")
+        input_bins = self.get_data_path("bins/two-samples")
         contigs = ContigSequencesDirFmt(input_contigs, mode="r")
         bins = MultiFASTADirectoryFormat(input_bins, mode="r")
 
@@ -564,14 +567,11 @@ class TestDASTool(TestPluginBase):
             refine_bins_das_tool(bins=[bins], contigs=contigs)
 
     def test_run_das_tool(self):
-        # TODO: Rearrange the tests according to the order they occur.
-        # TODO: See if more processes can be patched.
-        # TODO: Check coverage for current tests.
-        bins1_dirpath = self.get_data_path("mags/binning_1")
-        bins2_dirpath = self.get_data_path("mags/binning_2")
+        bins1_dirpath = self.get_data_path("bins/semibin_run1")
+        bins2_dirpath = self.get_data_path("bins/semibin_run2")
         bins1 = MultiFASTADirectoryFormat(bins1_dirpath, mode="r")
         bins2 = MultiFASTADirectoryFormat(bins2_dirpath, mode="r")
-        contigs_fp = self.get_data_path("contigs/samp2_contigs.fa")
+        contigs_fp = self.get_data_path("contigs/two-samples/samp2_contigs.fa")
 
         args = [
             "--search_engine",
@@ -629,6 +629,75 @@ class TestDASTool(TestPluginBase):
                 exp_evaluation_fp.read_text(),
                 obs_evaluation_fp.read_text(),
             )
+
+    @patch("subprocess.run")
+    def test_run_das_tool_with_proteins(self, p1):
+        bins1_dirpath = self.get_data_path("bins/semibin_run1")
+        bins2_dirpath = self.get_data_path("bins/semibin_run2")
+        bins1 = MultiFASTADirectoryFormat(bins1_dirpath, mode="r")
+        bins2 = MultiFASTADirectoryFormat(bins2_dirpath, mode="r")
+        contigs_fp = self.get_data_path("contigs/two-samples/samp2_contigs.fa")
+        proteins_fp = self.get_data_path("proteins/two-samples/samp2.fasta")
+
+        args = [
+            "--search_engine",
+            "diamond",
+            "--score_threshold",
+            "0.1",
+            "--threads",
+            "2",
+            "--debug",
+        ]
+
+        with tempfile.TemporaryDirectory() as fake_loc:
+            _, _, _ = _run_das_tool(
+                sample_id="samp1",
+                bins=[
+                    bins1,
+                    bins2,
+                ],
+                contigs_fp=contigs_fp,
+                proteins_fp=proteins_fp,
+                labels=["binning_1", "binning_2"],
+                common_args=args,
+                output_dir=fake_loc,
+            )
+
+            exp_cmd = [
+                "DAS_Tool",
+                "--bins",
+                ANY,
+                "--labels",
+                "binning_1,binning_2",
+                "--contigs",
+                ANY,
+                "--outputbasename",
+                os.path.join(fake_loc, "samp1"),
+                "--write_bins",
+                "--write_bin_evals",
+                "--proteins",
+                ANY,
+            ]
+            exp_cmd.extend(args)
+            p1.assert_called_once_with(
+                exp_cmd,
+                env=ANY,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+    def test_collect_refined_bins(self):
+        bins_dirpath = self.get_data_path("bins/single-sample/samp1")
+
+        with tempfile.TemporaryDirectory() as fake_loc:
+            obs_bin_count = _collect_refined_bins(
+                sample_id="samp1",
+                das_tool_bins_dir=bins_dirpath,
+                refined_bins=fake_loc,
+            )
+
+            self.assertEqual(obs_bin_count, 2)
 
 
 if __name__ == "__main__":
