@@ -7,9 +7,9 @@
 # ----------------------------------------------------------------------------
 import glob
 import os.path
-import re
 import shutil
 import tempfile
+import pysam
 from pathlib import Path
 from uuid import uuid4
 
@@ -19,14 +19,30 @@ from q2_types.per_sample_sequences import (
     MultiFASTADirectoryFormat,
 )
 from q2_mag.metabat2.metabat2 import _generate_contig_map
-from q2_mag.utils import _process_common_input_params
+from q2_mag.utils import _process_common_input_params, run_command
 from q2_mag.vamb.utils import _process_vamb_arg
 
 
 def _run_vamb(
     binner: str,
     samp_name: str,
+    samp_props: dict[str],
+    loc: str,
+    common_args: list[str],
+    binsplit_separator: str,
 ):
+    bins_dp = os.path.join(loc, samp_name)
+    bins_prefix = os.path.join(bins_dp, "bin")
+    os.makedirs(bins_dp)
+
+    # VAMB expects a directory of BAM files and not a single file
+    bamdir = os.path.join(loc, f"{samp_name}_bams")
+    os.makedirs(bamdir)
+    os.symlink(
+        samp_props["map"],
+        os.path.join(bamdir, os.path.basename(samp_props["map"])),
+    )
+
     cmd = [
         "vamb",
         "bin",
@@ -34,22 +50,30 @@ def _run_vamb(
         "--fasta",
         samp_props["contigs"],
         "--bamdir",
-        samp_props["map"],
-        "--output",
+        bamdir,
+        "--outdir",
         bins_prefix,
-        ""
+        "-o",
+        binsplit_separator,
+        "--norefcheck",  # References across maps, contigs, and taxonomy already checked
     ]
+    cmd.extend(common_args)
+    run_command(cmd, verbose=True)
+    return bins_dp
 
-    return
 
+def _process_sample(
+    samp_name, samp_props, binner, multi_split, common_args, result_loc
+):
+    binsplit_separator = "C" if multi_split else ""
 
-def _process_sample(samp_name, samp_props, binner, common_args, result_loc):
     with tempfile.TemporaryDirectory() as tmp:
-        output_dp = _run_vamb(binner, samp_name, samp_props, tmp, binner, common_args)
-        bins_dp = os.path.join(output_dp, "bin/output_bins/")
+        output_dp = _run_vamb(
+            binner, samp_name, samp_props, tmp, common_args, binsplit_separator
+        )
+        bins_dp = os.path.join(output_dp, "bin", "bins")
 
-        all_outputs = glob.glob(os.path.join(bins_dp, "*.fa"))
-        all_bins = [x for x in all_outputs if re.search(r"SemiBin\_[0-9]+\.fa$", x)]
+        all_bins = glob.glob(os.path.join(bins_dp, "*.fna"))
 
         # rename using UUID v4
         bin_dest_dir = os.path.join(str(result_loc), samp_name)
@@ -57,8 +81,39 @@ def _process_sample(samp_name, samp_props, binner, common_args, result_loc):
         for old_bin in all_bins:
             new_bin = os.path.join(bin_dest_dir, f"{uuid4()}.fa")
             shutil.move(old_bin, new_bin)
-
     return
+
+
+def _assert_maps_matches_contigs(sample_set: dict[str]) -> None:
+    failed_samples = {}
+
+    for samp, props in sample_set.items():
+        with (
+            pysam.FastaFile(props["contigs"]) as fasta,
+            pysam.AlignmentFile(props["map"], "r") as bam,
+        ):
+            fasta_records = tuple(zip(fasta.references, fasta.lengths))
+            bam_records = tuple(zip(bam.references, bam.lengths))
+
+            if fasta_records != bam_records:
+                failed_samples[samp] = (len(fasta_records), len(bam_records))
+
+    if failed_samples:
+        failed_sample_details = ", ".join(
+            (
+                "\n  "
+                f"Sample {sample}: {fasta_count} contigs, {bam_count} BAM references"
+            )
+            for sample, (fasta_count, bam_count) in failed_samples.items()
+        )
+
+        raise ValueError(
+            "Alignment maps do not match the corresponding contigs in at least one "
+            "sample. The following samples had a mismatch in count, name, order, and "
+            f"or length: {failed_sample_details}."
+        )
+
+    return None
 
 
 def _assert_samples(
@@ -66,11 +121,11 @@ def _assert_samples(
     bamdir: BAMDirFmt,
     taxonomy: dict | None,
 ) -> dict:
-    fasta_fps = fasta.sample_dict.values()
+    fasta_fps = fasta.sample_dict().values()
     bam_fps = glob.glob(os.path.join(str(bamdir), "*.bam"))
     fasta_fps, bam_fps = sorted(fasta_fps), sorted(bam_fps)
 
-    fasta_samples = fasta.sample_dict.keys()
+    fasta_samples = fasta.sample_dict().keys()
     bam_samples = [Path(fp).stem.rsplit("_alignment", 1)[0] for fp in bam_fps]
 
     if set(fasta_samples) != set(bam_samples):
@@ -83,7 +138,7 @@ def _assert_samples(
 
     return {
         s: {"contigs": fasta_fps[i], "map": bam_fps[i]}
-        for i, s in enumerate(fasta_fps)
+        for i, s in enumerate(fasta_samples)
     }
 
 
@@ -91,28 +146,38 @@ def _bin_contigs_vamb(
     fasta: ContigSequencesDirFmt,
     bamdir: BAMDirFmt,
     taxonomy: dict | None,
+    multi_split: bool,
     common_args: list,
 ) -> (MultiFASTADirectoryFormat, dict):
     binner = "taxvamb" if taxonomy is not None else "default"
-    sample_set = _assert_samples(fasta, bamdir)
+    sample_set = _assert_samples(fasta, bamdir, taxonomy)
+    _assert_maps_matches_contigs(sample_set)
 
     bins = MultiFASTADirectoryFormat()
     for samp, props in sample_set.items():
-        _process_sample(samp, props)
+        _process_sample(samp, props, binner, multi_split, common_args, str(bins))
+
+    if not glob.glob(os.path.join(str(bins), "*/*.fa")):
+        raise ValueError(
+            "No MAGs were formed during binning, please check your inputs."
+        )
+
+    contig_map = _generate_contig_map(bins)
+
+    return bins, contig_map
 
 
 def bin_contigs_vamb(
     fasta: ContigSequencesDirFmt,
     bamdir: BAMDirFmt,
+    multi_split: bool = False,
     min_contig_len: int = 2000,
     minfasta: int = 2000,
     threads: int = 8,
-    seed: int | None = None
+    seed: int | None = None,
 ) -> (MultiFASTADirectoryFormat, dict):
     kwargs = {
-        k: v
-        for k, v in locals().items()
-        if k not in ["fasta", "bamdir"]
+        k: v for k, v in locals().items() if k not in ["fasta", "bamdir", "multi_split"]
     }
 
     common_args = _process_common_input_params(
@@ -122,7 +187,9 @@ def bin_contigs_vamb(
     return _bin_contigs_vamb(
         fasta=fasta,
         bamdir=bamdir,
-        common_args=common_args
+        taxonomy=None,
+        multi_split=multi_split,
+        common_args=common_args,
     )
 
 
@@ -130,16 +197,15 @@ def bin_contigs_taxvamb(
     fasta: ContigSequencesDirFmt,
     bamdir: BAMDirFmt,
     taxonomy: dict,
+    multi_split: bool = False,
     min_contig_len: int = 2000,
-    min_bin_size: int = 2000,
-    no_predictor: bool = False,
+    minfasta: int = 2000,
     threads: int = 8,
-    seed: int | None = None
+    seed: int | None = None,
+    no_predictor: bool = False,
 ) -> (MultiFASTADirectoryFormat, dict):
     kwargs = {
-        k: v
-        for k, v in locals().items()
-        if k not in ["fasta", "bamdir"]
+        k: v for k, v in locals().items() if k not in ["fasta", "bamdir", "multi_split"]
     }
 
     common_args = _process_common_input_params(
@@ -149,6 +215,7 @@ def bin_contigs_taxvamb(
     return _bin_contigs_vamb(
         fasta=fasta,
         bamdir=bamdir,
-        taxonomy=taxonomy
-        common_args=common_args
+        taxonomy=taxonomy,
+        multi_split=multi_split,
+        common_args=common_args,
     )

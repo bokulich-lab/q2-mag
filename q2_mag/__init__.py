@@ -7,13 +7,22 @@
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
 from . import (
+    (
     abundance,
+
     busco,
+
     dereplication,
+
     filtering,
+
     metabat2,
-    utils,
+
+
     semibin2,
+    utils,
+    vamb,
+),
     das_tool,
 )
 
@@ -31,4 +40,5 @@ __all__ = [
     "metabat2",
     "semibin2",
     "utils",
+    "vamb",
 ]
