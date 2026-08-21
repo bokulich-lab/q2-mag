@@ -24,6 +24,7 @@ requirements:
   - scipy {{ scipy }}
   - scikit-bio {{ scikit_bio }}
   - semibin {{ semibin }}
+  - das_tool {{ das_tool }}
   build:
   - python {{ python }}
   - setuptools
