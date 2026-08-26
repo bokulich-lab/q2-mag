@@ -81,10 +81,11 @@ def _process_sample(
         for old_bin in all_bins:
             new_bin = os.path.join(bin_dest_dir, f"{uuid4()}.fa")
             shutil.move(old_bin, new_bin)
+
     return
 
 
-def _assert_maps_matches_contigs(sample_set: dict[str]) -> None:
+def _assert_reference_integrity(sample_set: dict[str]) -> None:
     failed_samples = {}
 
     for samp, props in sample_set.items():
@@ -119,7 +120,7 @@ def _assert_maps_matches_contigs(sample_set: dict[str]) -> None:
 def _assert_samples(
     fasta: ContigSequencesDirFmt,
     bamdir: BAMDirFmt,
-    taxonomy: dict | None,
+    taxonomy: dict | None = None,
 ) -> dict:
     fasta_fps = fasta.sample_dict().values()
     bam_fps = glob.glob(os.path.join(str(bamdir), "*.bam"))
@@ -151,7 +152,7 @@ def _bin_contigs_vamb(
 ) -> (MultiFASTADirectoryFormat, dict):
     binner = "taxvamb" if taxonomy is not None else "default"
     sample_set = _assert_samples(fasta, bamdir, taxonomy)
-    _assert_maps_matches_contigs(sample_set)
+    _assert_reference_integrity(sample_set)
 
     bins = MultiFASTADirectoryFormat()
     for samp, props in sample_set.items():
@@ -170,12 +171,14 @@ def _bin_contigs_vamb(
 def bin_contigs_vamb(
     fasta: ContigSequencesDirFmt,
     bamdir: BAMDirFmt,
-    multi_split: bool = False,
+    # multi_split: bool = False,
     min_contig_len: int = 2000,
     minfasta: int = 2000,
     threads: int = 8,
     seed: int | None = None,
 ) -> (MultiFASTADirectoryFormat, dict):
+    multi_split = False  # Placeholder until multi split is supported
+
     kwargs = {
         k: v for k, v in locals().items() if k not in ["fasta", "bamdir", "multi_split"]
     }
@@ -193,29 +196,29 @@ def bin_contigs_vamb(
     )
 
 
-def bin_contigs_taxvamb(
-    fasta: ContigSequencesDirFmt,
-    bamdir: BAMDirFmt,
-    taxonomy: dict,
-    multi_split: bool = False,
-    min_contig_len: int = 2000,
-    minfasta: int = 2000,
-    threads: int = 8,
-    seed: int | None = None,
-    no_predictor: bool = False,
-) -> (MultiFASTADirectoryFormat, dict):
-    kwargs = {
-        k: v for k, v in locals().items() if k not in ["fasta", "bamdir", "multi_split"]
-    }
+# def bin_contigs_taxvamb(
+#     fasta: ContigSequencesDirFmt,
+#     bamdir: BAMDirFmt,
+#     taxonomy: dict,
+#     multi_split: bool = False,
+#     min_contig_len: int = 2000,
+#     minfasta: int = 2000,
+#     threads: int = 8,
+#     seed: int | None = None,
+#     no_predictor: bool = False,
+# ) -> (MultiFASTADirectoryFormat, dict):
+#     kwargs = {
+#         k: v for k, v in locals().items() if k not in ["fasta", "bamdir", "multi_split"]
+#     }
 
-    common_args = _process_common_input_params(
-        processing_func=_process_vamb_arg, params=kwargs
-    )
+#     common_args = _process_common_input_params(
+#         processing_func=_process_vamb_arg, params=kwargs
+#     )
 
-    return _bin_contigs_vamb(
-        fasta=fasta,
-        bamdir=bamdir,
-        taxonomy=taxonomy,
-        multi_split=multi_split,
-        common_args=common_args,
-    )
+#     return _bin_contigs_vamb(
+#         fasta=fasta,
+#         bamdir=bamdir,
+#         taxonomy=taxonomy,
+#         multi_split=multi_split,
+#         common_args=common_args,
+#     )
