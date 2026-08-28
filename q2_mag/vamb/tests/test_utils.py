@@ -7,37 +7,32 @@
 # ----------------------------------------------------------------------------
 
 import unittest
-from qiime2.plugin.testing import TestPluginBase
+from rachis.plugin.testing import TestPluginBase
 
-from q2_mag.metabat2.utils import _process_metabat2_arg
+from q2_mag.vamb.utils import _process_vamb_arg
 
 
-class TestMetabat2Utils(TestPluginBase):
-    package = "q2_mag.metabat2.tests"
+class TestVAMBUtils(TestPluginBase):
+    package = "q2_mag.semibin2.tests"
 
-    def test_process_metabat_arg_tnf(self):
-        obs = _process_metabat2_arg("p_tnf", 12)
-        exp = ["--pTNF", "12"]
+    def test_process_vamb_arg_min_contig_len(self):
+        obs = _process_vamb_arg("min_contig_len", 2000)
+        exp = ["-m", "2000"]
         self.assertListEqual(obs, exp)
 
-    def test_process_metabat_arg_min_cv(self):
-        obs = _process_metabat2_arg("min_cv", 10)
-        exp = ["--minCV", "10"]
+    def test_process_vamb_arg_threads(self):
+        obs = _process_vamb_arg("threads", 8)
+        exp = ["-p", "8"]
         self.assertListEqual(obs, exp)
 
-    def test_process_metabat_arg_min_cv_sum(self):
-        obs = _process_metabat2_arg("min_cv_sum", 50)
-        exp = ["--minCVSum", "50"]
+    def test_process_vamb_arg_option(self):
+        obs = _process_vamb_arg("minfasta", 1000)
+        exp = ["--minfasta", "1000"]
         self.assertListEqual(obs, exp)
 
-    def test_process_metabat_arg_other(self):
-        obs = _process_metabat2_arg("max_edges", 200)
-        exp = ["--maxEdges", "200"]
-        self.assertListEqual(obs, exp)
-
-    def test_process_metabat_arg_bool(self):
-        obs = _process_metabat2_arg("no_add", True)
-        exp = ["--noAdd"]
+    def test_process_vamb_arg_bool(self):
+        obs = _process_vamb_arg("verbose", True)
+        exp = ["--verbose"]
         self.assertListEqual(obs, exp)
 
 

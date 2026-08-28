@@ -85,13 +85,31 @@ def _process_sample(
     return
 
 
-def _assert_reference_integrity(sample_set: dict[str]) -> None:
+def _assert_reference_integrity(
+    sample_set: dict[str], contig_key: str, map_key: str
+) -> None:
+    """Verify that each sample's FASTA and BAM references are identical.
+
+    Parameters
+    ----------
+    sample_set : dict[str]
+        Mapping of sample identifiers to their associated file paths.
+    contig_key : str
+        Key for a sample's contig FASTA path.
+    map_key : str
+        Key for a sample's alignment-map path.
+
+    Raises
+    ------
+    ValueError
+        If a sample's references differ in count, name, order, or length.
+    """
     failed_samples = {}
 
     for samp, props in sample_set.items():
         with (
-            pysam.FastaFile(props["contigs"]) as fasta,
-            pysam.AlignmentFile(props["map"], "r") as bam,
+            pysam.FastaFile(props[contig_key]) as fasta,
+            pysam.AlignmentFile(props[map_key], "r") as bam,
         ):
             fasta_records = tuple(zip(fasta.references, fasta.lengths))
             bam_records = tuple(zip(bam.references, bam.lengths))
@@ -152,7 +170,7 @@ def _bin_contigs_vamb(
 ) -> (MultiFASTADirectoryFormat, dict):
     binner = "taxvamb" if taxonomy is not None else "default"
     sample_set = _assert_samples(fasta, bamdir, taxonomy)
-    _assert_reference_integrity(sample_set)
+    _assert_reference_integrity(sample_set, "contigs", "map")
 
     bins = MultiFASTADirectoryFormat()
     for samp, props in sample_set.items():
@@ -208,7 +226,8 @@ def bin_contigs_vamb(
 #     no_predictor: bool = False,
 # ) -> (MultiFASTADirectoryFormat, dict):
 #     kwargs = {
-#         k: v for k, v in locals().items() if k not in ["fasta", "bamdir", "multi_split"]
+#         k: v for k, v in locals().items() if k not in ["fasta", "bamdir",
+# "multi_split"]
 #     }
 
 #     common_args = _process_common_input_params(

@@ -18,7 +18,7 @@ from q2_types.per_sample_sequences import (
     ContigSequencesDirFmt,
     MultiFASTADirectoryFormat,
 )
-from qiime2.plugin.testing import TestPluginBase
+from rachis.plugin.testing import TestPluginBase
 
 from q2_mag.vamb.vamb import (
     _assert_reference_integrity,
@@ -32,6 +32,46 @@ from q2_mag.vamb.vamb import (
 
 class TestVAMB(TestPluginBase):
     package = "q2_mag.vamb.tests"
+
+    def test_assert_reference_integrity_ok(self):
+        contigs_path = self.get_data_path("contigs")
+        maps_path = self.get_data_path("maps")
+
+        sample_set = {
+            "samp1": {
+                "contigs": str(Path(contigs_path) / "samp1_contigs.fa"),
+                "map": str(Path(maps_path) / "samp1_alignment.bam"),
+            },
+            "samp2": {
+                "contigs": str(Path(contigs_path) / "samp2_contigs.fa"),
+                "map": str(Path(maps_path) / "samp2_alignment.bam"),
+            },
+        }
+
+        _assert_reference_integrity(sample_set, "contigs", "map")
+
+    def test_assert_reference_integrity_mismatch(self):
+        contigs_path = self.get_data_path("contigs")
+        maps_path = self.get_data_path("maps")
+
+        sample_set = {
+            "samp1": {
+                "contigs": str(Path(contigs_path) / "samp1_contigs.fa"),
+                "map": str(Path(maps_path) / "samp2_alignment.bam"),
+            },
+            "samp2": {
+                "contigs": str(Path(contigs_path) / "samp2_contigs.fa"),
+                "map": str(Path(maps_path) / "samp1_alignment.bam"),
+            },
+        }
+
+        with self.assertRaisesRegex(
+            Exception,
+            "Alignment maps do not match the corresponding contigs in at least one "
+            "sample. The following samples had a mismatch in count, name, order, and "
+            "or length:",
+        ):
+            _assert_reference_integrity(sample_set, "contigs", "map")
 
     def test_assert_samples_ok(self):
         contigs_path = self.get_data_path("contigs")
@@ -262,6 +302,31 @@ class TestVAMB(TestPluginBase):
 
         with self.assertRaisesRegex(ValueError, "No MAGs were formed"):
             _bin_contigs_vamb(contigs, maps, None, False, args)
+
+    @patch("q2_mag.vamb.vamb._bin_contigs_vamb")
+    @patch("q2_mag.vamb.vamb._process_common_input_params")
+    def test_bin_contigs_vamb_wrapper(self, p1, p2):
+        input_contigs = self.get_data_path("contigs")
+        input_maps = self.get_data_path("maps")
+        contigs = ContigSequencesDirFmt(input_contigs, mode="r")
+        maps = BAMDirFmt(input_maps, mode="r")
+
+        p1.return_value = ["--minfasta", "1000", "-m", "2000"]
+        p2.return_value = ("bins", {"contigA": "bin1"})
+
+        obs_bins = bin_contigs_vamb(
+            fasta=contigs,
+            bamdir=maps,
+            min_contig_len=1000,
+            minfasta=2000,
+            threads=8,
+            seed="12345",
+        )
+        exp_bins = ("bins", {"contigA": "bin1"})
+
+        p1.assert_called_once()
+        p2.assert_called_once()
+        self.assertTupleEqual(exp_bins, obs_bins)
 
 
 if __name__ == "__main__":
