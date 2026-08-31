@@ -33,7 +33,7 @@ from q2_types.per_sample_sequences import (
 )
 from q2_types.sample_data import SampleData
 from q2_types.metadata import ImmutableMetadata
-from q2_types.feature_map import FeatureMap, MAGtoContigs, TaxonomyToContigs
+from q2_types.feature_map import FeatureMap, MAGtoContigs
 from qiime2.core.type import (
     Bool,
     Range,
