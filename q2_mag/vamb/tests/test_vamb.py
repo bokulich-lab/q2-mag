@@ -315,8 +315,8 @@ class TestVAMB(TestPluginBase):
         p2.return_value = ("bins", {"contigA": "bin1"})
 
         obs_bins = bin_contigs_vamb(
-            fasta=contigs,
-            bamdir=maps,
+            contigs=contigs,
+            alignment_maps=maps,
             min_contig_len=1000,
             minfasta=2000,
             threads=8,

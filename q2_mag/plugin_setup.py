@@ -86,12 +86,12 @@ partition_param_descriptions = {
 }
 
 common_vamb_inputs = {
-    "fasta": SampleData[Contigs],
-    "bamdir": SampleData[AlignmentMap % Properties("sorted")],
+    "contigs": SampleData[Contigs],
+    "alignment_maps": SampleData[AlignmentMap % Properties("sorted")],
 }
 common_vamb_input_descriptions = {
-    "fasta": "Input contigs to use.",
-    "bamdir": "Reads-to-contig alignment maps to use.",
+    "contigs": "Input contigs to use.",
+    "alignment_maps": "Reads-to-contig alignment maps to use.",
 }
 common_vamb_outputs = [
     ("mags", SampleData[MAGs]),

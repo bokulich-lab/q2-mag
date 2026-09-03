@@ -136,15 +136,15 @@ def _assert_reference_integrity(
 
 
 def _assert_samples(
-    fasta: ContigSequencesDirFmt,
-    bamdir: BAMDirFmt,
+    contigs: ContigSequencesDirFmt,
+    alignment_maps: BAMDirFmt,
     taxonomy: dict | None = None,
 ) -> dict:
-    fasta_fps = fasta.sample_dict().values()
-    bam_fps = glob.glob(os.path.join(str(bamdir), "*.bam"))
+    fasta_fps = contigs.sample_dict().values()
+    bam_fps = glob.glob(os.path.join(str(alignment_maps), "*.bam"))
     fasta_fps, bam_fps = sorted(fasta_fps), sorted(bam_fps)
 
-    fasta_samples = fasta.sample_dict().keys()
+    fasta_samples = contigs.sample_dict().keys()
     bam_samples = [Path(fp).stem.rsplit("_alignment", 1)[0] for fp in bam_fps]
 
     if set(fasta_samples) != set(bam_samples):
@@ -162,14 +162,14 @@ def _assert_samples(
 
 
 def _bin_contigs_vamb(
-    fasta: ContigSequencesDirFmt,
-    bamdir: BAMDirFmt,
+    contigs: ContigSequencesDirFmt,
+    alignment_maps: BAMDirFmt,
     taxonomy: dict | None,
     multi_split: bool,
     common_args: list,
 ) -> (MultiFASTADirectoryFormat, dict):
     binner = "taxvamb" if taxonomy is not None else "default"
-    sample_set = _assert_samples(fasta, bamdir, taxonomy)
+    sample_set = _assert_samples(contigs, alignment_maps, taxonomy)
     _assert_reference_integrity(sample_set, "contigs", "map")
 
     bins = MultiFASTADirectoryFormat()
@@ -187,8 +187,8 @@ def _bin_contigs_vamb(
 
 
 def bin_contigs_vamb(
-    fasta: ContigSequencesDirFmt,
-    bamdir: BAMDirFmt,
+    contigs: ContigSequencesDirFmt,
+    alignment_maps: BAMDirFmt,
     # multi_split: bool = False,
     min_contig_len: int = 2000,
     minfasta: int = 2000,
@@ -198,7 +198,9 @@ def bin_contigs_vamb(
     multi_split = False  # Placeholder until multi split is supported
 
     kwargs = {
-        k: v for k, v in locals().items() if k not in ["fasta", "bamdir", "multi_split"]
+        k: v
+        for k, v in locals().items()
+        if k not in ["contigs", "alignment_maps", "multi_split"]
     }
 
     common_args = _process_common_input_params(
@@ -206,8 +208,8 @@ def bin_contigs_vamb(
     )
 
     return _bin_contigs_vamb(
-        fasta=fasta,
-        bamdir=bamdir,
+        contigs=contigs,
+        alignment_maps=alignment_maps,
         taxonomy=None,
         multi_split=multi_split,
         common_args=common_args,
