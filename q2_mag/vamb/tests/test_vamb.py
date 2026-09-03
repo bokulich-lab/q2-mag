@@ -26,6 +26,7 @@ from q2_mag.vamb.vamb import (
     _bin_contigs_vamb,
     _process_sample,
     _run_vamb,
+    _process_vamb_arg,
     bin_contigs_vamb,
 )
 
@@ -105,8 +106,8 @@ class TestVAMB(TestPluginBase):
 
             with self.assertRaisesRegex(
                 Exception,
-                "Contigs and alignment maps should belong to the same sample"
-                " set. You provided contigs for samples: samp1,samp2 but maps "
+                "Contigs and alignment maps should belong to the same sample "
+                "set. You provided contigs for samples: samp1,samp2 but maps "
                 "for samples: samp1. Please check your inputs and try again.",
             ):
                 _assert_samples(contigs, maps)
@@ -324,8 +325,22 @@ class TestVAMB(TestPluginBase):
         )
         exp_bins = ("bins", {"contigA": "bin1"})
 
-        p1.assert_called_once()
-        p2.assert_called_once()
+        p1.assert_called_once_with(
+            processing_func=_process_vamb_arg,
+            params={
+                "min_contig_len": 1000,
+                "minfasta": 2000,
+                "threads": 8,
+                "seed": "12345",
+            },
+        )
+        p2.assert_called_once_with(
+            contigs=contigs,
+            alignment_maps=maps,
+            taxonomy=None,
+            multi_split=False,
+            common_args=p1.return_value,
+        )
         self.assertTupleEqual(exp_bins, obs_bins)
 
 
