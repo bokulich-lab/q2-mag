@@ -140,9 +140,8 @@ def _assert_samples(
     alignment_maps: BAMDirFmt,
     taxonomy: dict | None = None,
 ) -> dict:
-    fasta_fps = contigs.sample_dict().values()
-    bam_fps = glob.glob(os.path.join(str(alignment_maps), "*.bam"))
-    fasta_fps, bam_fps = sorted(fasta_fps), sorted(bam_fps)
+    fasta_fps = sorted(contigs.sample_dict().values())
+    bam_fps = sorted(glob.glob(os.path.join(str(alignment_maps), "*.bam")))
 
     fasta_samples = contigs.sample_dict().keys()
     bam_samples = [Path(fp).stem.rsplit("_alignment", 1)[0] for fp in bam_fps]
