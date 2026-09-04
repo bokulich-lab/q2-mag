@@ -85,6 +85,47 @@ partition_param_descriptions = {
     )
 }
 
+common_vamb_inputs = {
+    "contigs": SampleData[Contigs],
+    "alignment_maps": SampleData[AlignmentMap % Properties("sorted")],
+}
+common_vamb_input_descriptions = {
+    "contigs": "Input contigs to use.",
+    "alignment_maps": "Reads-to-contig alignment maps to use.",
+}
+common_vamb_outputs = [
+    ("mags", SampleData[MAGs]),
+    ("contig_map", FeatureMap[MAGtoContigs]),
+]
+common_vamb_output_descriptions = {
+    "mags": "The resulting MAGs.",
+    "contig_map": (
+        "Mapping of MAG identifiers to the contig identifiers " "contained in each MAG."
+    ),
+}
+common_vamb_params = {
+    # "multi_split": Bool,
+    "min_contig_len": Int % Range(1, None),
+    "minfasta": Int % Range(1, None),
+    "threads": Int % Range(0, None),
+    "seed": Int % Range(0, None),
+}
+common_vamb_param_descriptions = {
+    # "multi_split": (
+    #     "When set, contigs from multiple samples are pooled together and analyzed "
+    #     "jointly before binning. After binning, the bins are split back into sample-"
+    #     "specific bins. This may improve genome recovery, but requires more "
+    #     "computational resources. One binning study suggests that the benefits of "
+    #     "multi-sample binning declines when using >20 samples or <10 samples (Kim et "
+    #     "al., 2026)."
+    # ),
+    "min_contig_len": "Ignore contigs shorter than this value (bp).",
+    "minfasta": (
+        "Output all bins with a total size (sum of contig lengths) greater than "
+        "or equal to this number."
+    ),
+}
+
 plugin.methods.register_function(
     function=q2_mag.metabat2.bin_contigs_metabat,
     inputs={
@@ -512,6 +553,49 @@ plugin.methods.register_function(
     ),
     citations=[],
 )
+
+plugin.methods.register_function(
+    function=q2_mag.vamb.bin_contigs_vamb,
+    inputs=common_vamb_inputs,
+    parameters=common_vamb_params,
+    outputs=common_vamb_outputs,
+    input_descriptions=common_vamb_input_descriptions,
+    parameter_descriptions=common_vamb_param_descriptions,
+    output_descriptions=common_vamb_output_descriptions,
+    name="Bin contigs into MAGs using VAMB.",
+    description=(
+        "This method uses VAMB to bin the provided contigs into MAGs. "
+        "Reference hash checking between composition, abundance and taxonomic inputs "
+        "is always performed (i.e., --norefcheck is never set)."
+    ),
+    citations=[citations["nissen2021improved"]],
+)
+
+# plugin.methods.register_function(
+#     function=q2_mag.vamb.bin_contigs_taxvamb,
+#     inputs={
+#         **common_vamb_inputs,
+#         "taxonomy": FeatureMap[TaxonomyToContigs],
+#     },
+#     parameters={
+#         **common_vamb_params,
+#         "no_predictor": Bool,
+#     },
+#     outputs=common_vamb_outputs,
+#     input_descriptions=common_vamb_input_descriptions,
+#     parameter_descriptions={
+#         **common_vamb_param_descriptions,
+#         "no_predictor": "Do not complete input taxonomy with Taxometer.",
+#     },
+#     output_descriptions=common_vamb_output_descriptions,
+#     name="Bin contigs into MAGs using TaxVAMB.",
+#     description=(
+#         "This method uses VAMB to bin the provided contigs into MAGs. "
+#         "Reference hash checking between composition, abundance and taxonomic inputs "
+#         "is always performed (i.e., --norefcheck is never set)."
+#     ),
+#     citations=[citations["kutuzova2026improving"]],
+# )
 
 plugin.methods.register_function(
     function=q2_mag.semibin2.bin_contigs_semibin2,

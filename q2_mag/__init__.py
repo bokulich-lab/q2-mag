@@ -12,9 +12,10 @@ from . import (
     dereplication,
     filtering,
     metabat2,
-    utils,
     semibin2,
+    utils,
     das_tool,
+    vamb,
 )
 
 try:
@@ -31,4 +32,5 @@ __all__ = [
     "metabat2",
     "semibin2",
     "utils",
+    "vamb",
 ]
