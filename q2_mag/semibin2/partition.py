@@ -6,11 +6,10 @@
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
 
-from .semibin2 import bin_contigs_semibin2, _bin_contigs_semibin2
-from .partition import collate_contig_maps
 
-__all__ = [
-    "bin_contigs_semibin2",
-    "_bin_contigs_semibin2",
-    "collate_contig_maps",
-]
+def collate_contig_maps(contig_maps: dict) -> dict:
+    collated_contig_maps = {}
+    for contig_map in contig_maps:
+        collated_contig_maps.update(contig_map)
+
+    return collated_contig_maps
