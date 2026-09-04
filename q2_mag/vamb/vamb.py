@@ -55,7 +55,6 @@ def _run_vamb(
         bins_prefix,
         "-o",
         binsplit_separator,
-        "--norefcheck",  # References across maps, contigs, and taxonomy already checked
     ]
     cmd.extend(common_args)
     run_command(cmd, verbose=True)

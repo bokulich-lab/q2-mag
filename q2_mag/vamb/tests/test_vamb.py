@@ -159,7 +159,6 @@ class TestVAMB(TestPluginBase):
                 os.path.join(fake_loc, "samp1", "bin"),
                 "-o",
                 "",
-                "--norefcheck",
             ]
             exp_cmd.extend(fake_args)
             p1.assert_called_once_with(exp_cmd, check=True)
