@@ -8,4 +8,4 @@
 
 from .vamb import bin_contigs_vamb, bin_contigs_taxvamb
 
-__all__ = ["bin_contigs_vamb"]
+__all__ = ["bin_contigs_vamb", "bin_contigs_taxvamb"]
