@@ -5,10 +5,11 @@
 #
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
+from qiime2.plugin.testing import TestPluginBase
 
-from .semibin2 import bin_contigs_semibin2, _bin_contigs_semibin2
 
-__all__ = [
-    "bin_contigs_semibin2",
-    "_bin_contigs_semibin2",
-]
+class TestUsageExamples(TestPluginBase):
+    package = "q2_mag.tests"
+
+    def test_examples(self):
+        self.execute_examples()

@@ -12,6 +12,7 @@ import shutil
 import tempfile
 from uuid import uuid4
 
+from qiime2.util import duplicate
 from q2_types.per_sample_sequences import (
     BAMDirFmt,
     ContigSequencesDirFmt,
@@ -21,6 +22,22 @@ from q2_types.per_sample_sequences import (
 from q2_mag.utils import _process_common_input_params, run_command
 from q2_mag.metabat2.metabat2 import _assert_samples, _generate_contig_map
 from q2_mag.semibin2.utils import _process_semibin2_arg
+
+
+def _filter_alignment_maps(
+    contigs: ContigSequencesDirFmt, alignment_maps: BAMDirFmt
+) -> BAMDirFmt:
+    samples = contigs.sample_dict()
+    maps_by_sample = alignment_maps.file_dict()
+
+    filtered_maps = BAMDirFmt()
+    for sample in samples:
+        src = maps_by_sample.get(f"{sample}_alignment")
+        if src is None:
+            continue
+        duplicate(src, os.path.join(str(filtered_maps.path), os.path.basename(src)))
+
+    return filtered_maps
 
 
 def _run_semibin2(samp_name, samp_props, loc, mode, common_args):
@@ -61,13 +78,14 @@ def _process_sample(samp_name, samp_props, mode, common_args, result_loc):
             shutil.move(old_bin, new_bin)
 
 
-def _bin_contigs_semibin2(
+def _bin_partition_contigs_semibin2(
     contigs: ContigSequencesDirFmt,
     alignment_maps: BAMDirFmt,
     mode: str,
     common_args: list,
 ) -> (MultiFASTADirectoryFormat, dict):
-    sample_set = _assert_samples(contigs, alignment_maps)
+    filtered_alignment_maps = _filter_alignment_maps(contigs, alignment_maps)
+    sample_set = _assert_samples(contigs, filtered_alignment_maps)
 
     bins = MultiFASTADirectoryFormat()
     for samp, props in sample_set.items():
@@ -83,7 +101,7 @@ def _bin_contigs_semibin2(
     return bins, contig_map
 
 
-def bin_contigs_semibin2(
+def _bin_contigs_semibin2(
     contigs: ContigSequencesDirFmt,
     alignment_maps: BAMDirFmt,
     # mode: str,
@@ -118,9 +136,59 @@ def bin_contigs_semibin2(
         processing_func=_process_semibin2_arg, params=kwargs
     )
 
-    return _bin_contigs_semibin2(
+    return _bin_partition_contigs_semibin2(
         contigs=contigs,
         alignment_maps=alignment_maps,
         mode=mode,
         common_args=common_args,
     )
+
+
+def bin_contigs_semibin2(
+    ctx,
+    contigs,
+    alignment_maps,
+    training_type=None,
+    orf_finder="fast-naive",
+    environment="global",
+    engine="auto",
+    sequencing_type="short_read",
+    minfasta_kbs=200,
+    no_recluster=False,
+    epochs=15,
+    batch_size=2048,
+    max_node=1,
+    max_edges=200,
+    ratio=0.05,
+    threads=1,
+    min_len=None,
+    ml_threshold=None,
+    random_seed=None,
+    debug=False,
+    num_partitions=None,
+):
+    kwargs = {
+        key: value
+        for key, value in locals().items()
+        if key not in {"ctx", "contigs", "alignment_maps", "num_partitions"}
+    }
+
+    partition_contigs = ctx.get_action("types", "partition_contigs")
+    bin_partition = ctx.get_action("mag", "_bin_contigs_semibin2")
+    collate_mags = ctx.get_action("types", "collate_sample_data_mags")
+    collate_contig_maps = ctx.get_action("types", "collate_contig_maps")
+
+    (partitioned_contigs,) = partition_contigs(contigs, num_partitions)
+    mags = []
+    contig_maps = []
+    for contig_partition in partitioned_contigs.values():
+        partition_mags, partition_contig_map = bin_partition(
+            contig_partition, alignment_maps, **kwargs
+        )
+        mags.append(partition_mags)
+        contig_maps.append(partition_contig_map)
+
+    (collated_mags,) = collate_mags(mags)
+    (collated_contig_map,) = collate_contig_maps(contig_maps)
+
+    return collated_mags, collated_contig_map
