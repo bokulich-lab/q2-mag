@@ -8,7 +8,7 @@
 
 import importlib
 
-from qiime2.plugin import Metadata
+from rachis.plugin import Metadata
 from q2_mag.busco.types import (
     BUSCOResultsFormat,
     BUSCOResultsDirectoryFormat,
@@ -21,6 +21,7 @@ from q2_types.feature_data import (
     FeatureData,
     Sequence,
     SequenceCharacteristics,
+    Taxonomy,
 )
 from q2_types.feature_table import (
     FeatureTable,
@@ -34,7 +35,7 @@ from q2_types.per_sample_sequences import (
 from q2_types.sample_data import SampleData
 from q2_types.metadata import ImmutableMetadata
 from q2_types.feature_map import FeatureMap, MAGtoContigs
-from qiime2.core.type import (
+from rachis.core.type import (
     Bool,
     Range,
     Int,
@@ -46,12 +47,13 @@ from qiime2.core.type import (
     Properties,
     TypeMap,
 )
-from qiime2.plugin import Plugin, Citations
+from rachis.plugin import Plugin, Citations
 import q2_mag
 from q2_types.feature_data_mag import MAG
 from q2_types.per_sample_sequences import AlignmentMap
 from q2_types.reference_db import ReferenceDB
 from q2_types.genome_data import GenomeData, Proteins
+from q2_types.feature_map import TaxonomyToContigs
 
 from q2_mag import __version__
 from q2_mag.semibin2._examples import bin_contigs_semibin2_example
@@ -566,37 +568,43 @@ plugin.methods.register_function(
     name="Bin contigs into MAGs using VAMB.",
     description=(
         "This method uses VAMB to bin the provided contigs into MAGs. "
-        "Reference hash checking between composition, abundance and taxonomic inputs "
+        "Reference hash checking between composition and abundance inputs "
         "is always performed (i.e., --norefcheck is never set)."
     ),
     citations=[citations["nissen2021improved"]],
 )
 
-# plugin.methods.register_function(
-#     function=q2_mag.vamb.bin_contigs_taxvamb,
-#     inputs={
-#         **common_vamb_inputs,
-#         "taxonomy": FeatureMap[TaxonomyToContigs],
-#     },
-#     parameters={
-#         **common_vamb_params,
-#         "no_predictor": Bool,
-#     },
-#     outputs=common_vamb_outputs,
-#     input_descriptions=common_vamb_input_descriptions,
-#     parameter_descriptions={
-#         **common_vamb_param_descriptions,
-#         "no_predictor": "Do not complete input taxonomy with Taxometer.",
-#     },
-#     output_descriptions=common_vamb_output_descriptions,
-#     name="Bin contigs into MAGs using TaxVAMB.",
-#     description=(
-#         "This method uses VAMB to bin the provided contigs into MAGs. "
-#         "Reference hash checking between composition, abundance and taxonomic inputs "
-#         "is always performed (i.e., --norefcheck is never set)."
-#     ),
-#     citations=[citations["kutuzova2026improving"]],
-# )
+plugin.methods.register_function(
+    function=q2_mag.vamb.bin_contigs_taxvamb,
+    inputs={
+        **common_vamb_inputs,
+        "taxid_map": FeatureMap[TaxonomyToContigs],
+        "taxonomy": FeatureData[Taxonomy],
+    },
+    parameters={
+        **common_vamb_params,
+        "no_predictor": Bool,
+    },
+    outputs=common_vamb_outputs,
+    input_descriptions={
+        **common_vamb_input_descriptions,
+        "taxid_map": "Mapping between contig IDs and assigned taxonomy IDs.",
+        "taxonomy": "Mapping between taxonomic IDs and full taxonomy strings.",
+    },
+    parameter_descriptions={
+        **common_vamb_param_descriptions,
+        "no_predictor": "Do not refine input taxonomy with Taxometer.",
+    },
+    output_descriptions=common_vamb_output_descriptions,
+    name="Bin contigs into MAGs using TaxVAMB.",
+    description=(
+        "This method uses TaxVAMB to bin the provided contigs into MAGs. "
+        "Unlike VAMB, TaxVAMB also uses contig-level taxonomic data to infer MAGs. "
+        "Reference hash checking between composition, abundance and taxonomic inputs "
+        "is always performed (i.e., --norefcheck is never set)."
+    ),
+    citations=[citations["kutuzova2026improving"]],
+)
 
 
 semibin2_params = {
