@@ -37,10 +37,6 @@ def _run_vamb(
     bins_prefix = os.path.join(bins_dp, "bin")
     os.makedirs(bins_dp)
 
-    if taxonomy != None:
-        taxonomy_fp = os.path.join(loc, "taxonomy.tsv")
-        taxonomy.to_csv(taxonomy_fp, sep='\t')
-
     # VAMB expects a directory of BAM files and not a single file
     bamdir = os.path.join(loc, f"{samp_name}_bams")
     os.makedirs(bamdir)
@@ -63,6 +59,12 @@ def _run_vamb(
         binsplit_separator,
     ]
     cmd.extend(common_args)
+
+    if taxonomy is not None:
+        taxonomy_fp = os.path.join(loc, "taxonomy.tsv")
+        taxonomy.to_csv(taxonomy_fp, sep="\t")
+        cmd.extend(["--taxonomy", taxonomy_fp])
+
     run_command(cmd, verbose=True)
     return bins_dp
 
@@ -74,8 +76,13 @@ def _process_sample(
 
     with tempfile.TemporaryDirectory() as tmp:
         output_dp = _run_vamb(
-            binner, samp_name, samp_props, tmp, common_args, binsplit_separator,
-            taxonomy
+            binner,
+            samp_name,
+            samp_props,
+            tmp,
+            common_args,
+            binsplit_separator,
+            taxonomy,
         )
         bins_dp = os.path.join(output_dp, "bin", "bins")
 
@@ -216,19 +223,10 @@ def _convert_taxonomy(taxid_map: dict, taxonomy: pd.DataFrame) -> pd.DataFrame:
     """
     taxids = _assert_taxids(taxid_map=taxid_map, taxonomy=taxonomy)
 
-    contigs = []
-    predictions = []
-
-    for taxid in taxids:
-        contig_ids = taxid_map[taxid]
-        contigs.extend(contig_ids)
-        predictions.extend(
-            [taxonomy.loc[taxid, "Taxon"]] * len(contig_ids)
-        )
+    s = pd.Series({k: taxid_map[k] for k in taxids}).explode()
 
     return pd.DataFrame(
-        data = zip(contigs, predictions),
-        columns = ["contigs", "predictions"]
+        {"contigs": s.values, "predictions": s.index.map(taxonomy["Taxon"])}
     )
 
 
@@ -245,8 +243,9 @@ def _bin_contigs_vamb(
 
     bins = MultiFASTADirectoryFormat()
     for samp, props in sample_set.items():
-        _process_sample(samp, props, binner, multi_split, common_args, str(bins),
-                        taxonomy)
+        _process_sample(
+            samp, props, binner, multi_split, common_args, str(bins), taxonomy
+        )
 
     if not glob.glob(os.path.join(str(bins), "*/*.fa")):
         raise ValueError(
@@ -261,28 +260,56 @@ def _bin_contigs_vamb(
 def bin_contigs_vamb(
     contigs: ContigSequencesDirFmt,
     alignment_maps: BAMDirFmt,
+    taxid_map: dict | None = None,
+    taxonomy: pd.DataFrame | None = None,
     # multi_split: bool = False,
     min_contig_len: int = 2000,
     minfasta: int = 2000,
     threads: int = 8,
     seed: int | None = None,
+    no_predictor: bool = False,
 ) -> (MultiFASTADirectoryFormat, dict):
     multi_split = False  # Placeholder until multi split is supported
 
-    kwargs = {
-        k: v
-        for k, v in locals().items()
-        if k not in ["contigs", "alignment_maps", "multi_split"]
-    }
+    if taxid_map is not None and taxonomy is None:
+        raise ValueError(
+            "Received `taxid_map`, but no `taxonomy` input. Both `taxid_map` and "
+            "`taxonomy` are required when running TaxVAMB."
+        )
+    elif taxonomy is not None and taxid_map is None:
+        raise ValueError(
+            "Received `taxonomy`, but no `taxid_map` input. Both `taxid_map` and "
+            "`taxonomy` are required when running TaxVAMB."
+        )
+    elif (taxid_map is None) and (taxonomy is None) and (no_predictor is True):
+        raise ValueError(
+            "`--p-no-predictor` flag is set, but no taxonomic information was provided."
+        )
+
+    ignore_args = [
+        "contigs",
+        "alignment_maps",
+        "taxid_map",
+        "taxonomy",
+        "multi_split",
+        "ignore_args",
+    ]
+    if (taxid_map is None) and (taxonomy is None):
+        ignore_args.append("no_predictor")
+
+    kwargs = {k: v for k, v in locals().items() if k not in ignore_args}
 
     common_args = _process_common_input_params(
         processing_func=_process_vamb_arg, params=kwargs
     )
 
+    if (taxid_map is not None) and (taxonomy is not None):
+        taxonomy = _convert_taxonomy(taxid_map=taxid_map, taxonomy=taxonomy)
+
     return _bin_contigs_vamb(
         contigs=contigs,
         alignment_maps=alignment_maps,
-        taxonomy=None,
+        taxonomy=taxonomy,
         multi_split=multi_split,
         common_args=common_args,
     )
