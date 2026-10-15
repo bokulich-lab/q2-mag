@@ -462,9 +462,9 @@ class TestVAMB(TestPluginBase):
         contigs = ContigSequencesDirFmt(input_contigs, mode="r")
         maps = BAMDirFmt(input_maps, mode="r")
 
-        p1.return_value = ["--minfasta", "1000"]
-        p2.return_value = ("bins", {"contigA": "bin1"})
-        p3.return_value = taxid_to_full_string_df
+        p1.return_value = taxid_to_full_string_df
+        p2.return_value = ["--minfasta", "1000"]
+        p3.return_value = ("bins", {"contigA": "bin1"})
 
         obs_bins = bin_contigs_vamb(
             contigs=contigs,
@@ -473,16 +473,28 @@ class TestVAMB(TestPluginBase):
             taxonomy=taxid_to_full_string_df,
         )
 
-        p3.assert_called_once_with(
+        p1.assert_called_once_with(
             taxid_map=taxid_to_contigs_dict,
             taxonomy=taxid_to_full_string_df,
         )
+
         p2.assert_called_once_with(
+            processing_func=_process_vamb_arg,
+            params={
+                "min_contig_len": 2000,
+                "minfasta": 2000,
+                "threads": 8,
+                "seed": None,
+                "no_predictor": False,
+            },
+        )
+
+        p3.assert_called_once_with(
             contigs=contigs,
             alignment_maps=maps,
             taxonomy=taxid_to_full_string_df,
             multi_split=False,
-            common_args=p1.return_value,
+            common_args=p2.return_value,
         )
         self.assertTupleEqual(("bins", {"contigA": "bin1"}), obs_bins)
 
