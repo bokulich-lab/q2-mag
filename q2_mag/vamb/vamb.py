@@ -260,8 +260,8 @@ def _bin_contigs_vamb(
 def bin_contigs_vamb(
     contigs: ContigSequencesDirFmt,
     alignment_maps: BAMDirFmt,
-    taxid_map: dict | None = None,
-    taxonomy: pd.DataFrame | None = None,
+    taxid_map: dict = None,
+    taxonomy: pd.DataFrame = None,
     # multi_split: bool = False,
     min_contig_len: int = 2000,
     minfasta: int = 2000,
