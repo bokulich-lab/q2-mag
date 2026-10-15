@@ -383,6 +383,58 @@ class TestVAMB(TestPluginBase):
         )
         self.assertTupleEqual(exp_bins, obs_bins)
 
+    def test_bin_contigs_vamb_taxid_map_without_taxonomy(self):
+        taxid_to_contigs_fp = self.get_data_path(
+            "/taxid-to-contigids-maps/feature_map.json"
+        )
+        taxid_to_contigs_df = pd.read_json(
+            taxid_to_contigs_fp, lines=True, dtype={"name": str}
+        )
+        taxid_to_contigs_dict = taxid_to_contigs_df.set_index("name")[
+            "members"
+        ].to_dict()
+
+        with self.assertRaisesRegex(
+            ValueError, "Received `taxid_map`, but no `taxonomy` input"
+        ):
+            bin_contigs_vamb(
+                contigs=None,
+                alignment_maps=None,
+                taxid_map=taxid_to_contigs_dict,
+                taxonomy=None,
+            )
+
+    def test_bin_contigs_vamb_taxonomy_without_taxid_map(self):
+        taxid_to_full_string_fp = self.get_data_path(
+            "/taxid-to-full-string-maps/taxonomy.tsv"
+        )
+        taxid_to_full_string_df = pd.read_csv(
+            taxid_to_full_string_fp, sep="\t", index_col="Feature ID"
+        )
+        taxid_to_full_string_df.index = taxid_to_full_string_df.index.astype(str)
+
+        with self.assertRaisesRegex(
+            ValueError, "Received `taxonomy`, but no `taxid_map` input"
+        ):
+            bin_contigs_vamb(
+                contigs=None,
+                alignment_maps=None,
+                taxid_map=None,
+                taxonomy=taxid_to_full_string_df,
+            )
+
+    def test_bin_contigs_vamb_no_predictor_without_taxonomic_info(self):
+        with self.assertRaisesRegex(
+            ValueError, "`--p-no-predictor` flag is set, but no taxonomic information"
+        ):
+            bin_contigs_vamb(
+                contigs=None,
+                alignment_maps=None,
+                taxid_map=None,
+                taxonomy=None,
+                no_predictor=True,
+            )
+
     def test_assert_taxids_ok(self):
         taxid_to_contigs_fp = self.get_data_path(
             "/taxid-to-contigids-maps/feature_map.json"
