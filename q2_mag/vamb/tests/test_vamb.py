@@ -142,7 +142,9 @@ class TestVAMB(TestPluginBase):
         fake_args = ["--verbose", "--minfasta", "1000", "-m", "2000"]
 
         with tempfile.TemporaryDirectory() as fake_loc:
-            obs_fp = _run_vamb("default", "samp1", fake_props, fake_loc, fake_args, "")
+            obs_fp = _run_vamb(
+                "default", "samp1", fake_props, fake_loc, fake_args, "", None
+            )
             exp_fp = os.path.join(fake_loc, "samp1")
 
             self.assertEqual(exp_fp, obs_fp)
@@ -193,7 +195,9 @@ class TestVAMB(TestPluginBase):
                 dirs_exist_ok=True,
             )
 
-            _process_sample("samp1", fake_props, "default", False, fake_args, fake_loc)
+            _process_sample(
+                "samp1", fake_props, "default", False, fake_args, fake_loc, None
+            )
 
             # find the newly formed bins
             obs_bins = set(
@@ -209,7 +213,7 @@ class TestVAMB(TestPluginBase):
             self.assertSetEqual(exp_bins, obs_bins)
 
             p1.assert_called_once_with(
-                "default", "samp1", fake_props, ANY, fake_args, ""
+                "default", "samp1", fake_props, ANY, fake_args, "", None
             )
 
     @patch("q2_mag.vamb.vamb.ContigSequencesDirFmt")
@@ -246,6 +250,7 @@ class TestVAMB(TestPluginBase):
                     False,
                     args,
                     str(mock_bins),
+                    None,
                 ),
                 call(
                     "samp2",
@@ -257,6 +262,7 @@ class TestVAMB(TestPluginBase):
                     False,
                     args,
                     str(mock_bins),
+                    None,
                 ),
             ]
         )
