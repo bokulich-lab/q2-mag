@@ -62,7 +62,7 @@ def _run_vamb(
 
     if taxonomy is not None:
         taxonomy_fp = os.path.join(loc, "taxonomy.tsv")
-        taxonomy.to_csv(taxonomy_fp, sep="\t")
+        taxonomy.to_csv(taxonomy_fp, sep="\t", index=False)
         cmd.extend(["--taxonomy", taxonomy_fp])
 
     run_command(cmd, verbose=True)
@@ -310,42 +310,6 @@ def bin_contigs_vamb(
         contigs=contigs,
         alignment_maps=alignment_maps,
         taxonomy=taxonomy,
-        multi_split=multi_split,
-        common_args=common_args,
-    )
-
-
-def bin_contigs_taxvamb(
-    contigs: ContigSequencesDirFmt,
-    alignment_maps: BAMDirFmt,
-    taxid_map: dict,
-    taxonomy: pd.DataFrame,
-    # multi_split: bool = False,
-    min_contig_len: int = 2000,
-    minfasta: int = 2000,
-    threads: int = 8,
-    seed: int | None = None,
-    no_predictor: bool = False,
-) -> (MultiFASTADirectoryFormat, dict):
-    multi_split = False  # Placeholder until multi split is supported
-
-    kwargs = {
-        k: v
-        for k, v in locals().items()
-        if k
-        not in ["contigs", "alignment_maps", "taxid_map", "taxonomy", "multi_split"]
-    }
-
-    common_args = _process_common_input_params(
-        processing_func=_process_vamb_arg, params=kwargs
-    )
-
-    converted_taxonomy = _convert_taxonomy(taxid_map=taxid_map, taxonomy=taxonomy)
-
-    return _bin_contigs_vamb(
-        contigs=contigs,
-        alignment_maps=alignment_maps,
-        taxonomy=converted_taxonomy,
         multi_split=multi_split,
         common_args=common_args,
     )
