@@ -383,7 +383,7 @@ class TestVAMB(TestPluginBase):
         )
         self.assertTupleEqual(exp_bins, obs_bins)
 
-    def test_bin_contigs_vamb_taxid_map_without_taxonomy(self):
+    def test_bin_contigs_vamb_wrapper_taxid_map_without_taxonomy(self):
         taxid_to_contigs_fp = self.get_data_path(
             "/taxid-to-contigids-maps/feature_map.json"
         )
@@ -404,7 +404,7 @@ class TestVAMB(TestPluginBase):
                 taxonomy=None,
             )
 
-    def test_bin_contigs_vamb_taxonomy_without_taxid_map(self):
+    def test_bin_contigs_vamb_wrapper_taxonomy_without_taxid_map(self):
         taxid_to_full_string_fp = self.get_data_path(
             "/taxid-to-full-string-maps/taxonomy.tsv"
         )
@@ -423,7 +423,7 @@ class TestVAMB(TestPluginBase):
                 taxonomy=taxid_to_full_string_df,
             )
 
-    def test_bin_contigs_vamb_no_predictor_without_taxonomic_info(self):
+    def test_bin_contigs_vamb_wrapper_no_predictor_without_taxonomic_info(self):
         with self.assertRaisesRegex(
             ValueError, "`--p-no-predictor` flag is set, but no taxonomic information"
         ):
@@ -434,6 +434,57 @@ class TestVAMB(TestPluginBase):
                 taxonomy=None,
                 no_predictor=True,
             )
+
+    @patch("q2_mag.vamb.vamb._bin_contigs_vamb")
+    @patch("q2_mag.vamb.vamb._process_common_input_params")
+    @patch("q2_mag.vamb.vamb._convert_taxonomy")
+    def test_bin_contigs_vamb_wrapper_with_taxonomic_information(self, p1, p2, p3):
+        taxid_to_contigs_fp = self.get_data_path(
+            "/taxid-to-contigids-maps/feature_map.json"
+        )
+        taxid_to_contigs_df = pd.read_json(
+            taxid_to_contigs_fp, lines=True, dtype={"name": str}
+        )
+        taxid_to_contigs_dict = taxid_to_contigs_df.set_index("name")[
+            "members"
+        ].to_dict()
+
+        taxid_to_full_string_fp = self.get_data_path(
+            "/taxid-to-full-string-maps/taxonomy.tsv"
+        )
+        taxid_to_full_string_df = pd.read_csv(
+            taxid_to_full_string_fp, sep="\t", index_col="Feature ID"
+        )
+        taxid_to_full_string_df.index = taxid_to_full_string_df.index.astype(str)
+
+        input_contigs = self.get_data_path("contigs")
+        input_maps = self.get_data_path("maps")
+        contigs = ContigSequencesDirFmt(input_contigs, mode="r")
+        maps = BAMDirFmt(input_maps, mode="r")
+
+        p1.return_value = ["--minfasta", "1000"]
+        p2.return_value = ("bins", {"contigA": "bin1"})
+        p3.return_value = taxid_to_full_string_df
+
+        obs_bins = bin_contigs_vamb(
+            contigs=contigs,
+            alignment_maps=maps,
+            taxid_map=taxid_to_contigs_dict,
+            taxonomy=taxid_to_full_string_df,
+        )
+
+        p3.assert_called_once_with(
+            taxid_map=taxid_to_contigs_dict,
+            taxonomy=taxid_to_full_string_df,
+        )
+        p2.assert_called_once_with(
+            contigs=contigs,
+            alignment_maps=maps,
+            taxonomy=taxid_to_full_string_df,
+            multi_split=False,
+            common_args=p1.return_value,
+        )
+        self.assertTupleEqual(("bins", {"contigA": "bin1"}), obs_bins)
 
     def test_assert_taxids_ok(self):
         taxid_to_contigs_fp = self.get_data_path(
