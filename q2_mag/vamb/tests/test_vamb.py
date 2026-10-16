@@ -197,7 +197,7 @@ class TestVAMB(TestPluginBase):
                 "",
             ]
             exp_cmd.extend(fake_args)
-            exp_cmd.extend(["--taxonomy", ANY])
+            exp_cmd.extend(["--taxonomy", os.path.join(fake_loc, "taxonomy.tsv")])
             p1.assert_called_once_with(exp_cmd, check=True)
 
     @patch("tempfile.TemporaryDirectory")
