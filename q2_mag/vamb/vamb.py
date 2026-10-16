@@ -225,9 +225,11 @@ def _convert_taxonomy(taxid_map: dict, taxonomy: pd.DataFrame) -> pd.DataFrame:
 
     s = pd.Series({k: taxid_map[k] for k in taxids}).explode()
 
-    return pd.DataFrame(
-        {"contigs": s.values, "predictions": s.index.map(taxonomy["Taxon"])}
-    )
+    # Label unclassified contigs (i.e., contigs with tax ID 0) with 'unknown'
+    predictions = s.index.map(taxonomy["Taxon"])
+    predictions = predictions.where(s.index != "0", "unknown")
+
+    return pd.DataFrame({"contigs": s.values, "predictions": predictions})
 
 
 def _bin_contigs_vamb(
