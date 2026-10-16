@@ -32,7 +32,7 @@ def _filter_alignment_maps(
 
     filtered_maps = BAMDirFmt()
     for sample in samples:
-        src = maps_by_sample.get(f"{sample}_alignment")
+        src = maps_by_sample.get(sample)
         if src is None:
             continue
         duplicate(src, os.path.join(str(filtered_maps.path), os.path.basename(src)))
