@@ -6,9 +6,6 @@
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
 
-from .semibin2 import bin_contigs_semibin2, _bin_contigs_semibin2
+from .semibin2 import bin_contigs_semibin2
 
-__all__ = [
-    "bin_contigs_semibin2",
-    "_bin_contigs_semibin2",
-]
+__all__ = ["bin_contigs_semibin2"]
