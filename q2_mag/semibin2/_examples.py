@@ -28,7 +28,7 @@ def bin_contigs_semibin2_example(use):
     contigs = use.init_artifact("contigs", contigs_factory)
     alignment_maps = use.init_artifact("alignment_maps", alignment_maps_factory)
 
-    mags, contig_map = use.action(
+    mags, contig_map, unbinned_contigs = use.action(
         use.UsageAction(plugin_id="mag", action_id="bin_contigs_semibin2"),
         use.UsageInputs(
             contigs=contigs,
@@ -41,8 +41,13 @@ def bin_contigs_semibin2_example(use):
             random_seed=1,
             num_partitions=2,
         ),
-        use.UsageOutputNames(mags="mags", contig_map="contig_map"),
+        use.UsageOutputNames(
+            mags="mags",
+            contig_map="contig_map",
+            unbinned_contigs="unbinned_contigs",
+        ),
     )
 
     mags.assert_output_type("SampleData[MAGs]")
     contig_map.assert_output_type("FeatureMap[MAGtoContigs]")
+    unbinned_contigs.assert_output_type("SampleData[Contigs]")

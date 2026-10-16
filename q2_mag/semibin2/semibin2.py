@@ -177,6 +177,7 @@ def bin_contigs_semibin2(
     bin_partition = ctx.get_action("mag", "_bin_contigs_semibin2")
     collate_mags = ctx.get_action("types", "collate_sample_data_mags")
     collate_contig_maps = ctx.get_action("types", "collate_contig_maps")
+    filter_contigs = ctx.get_action("assembly", "filter_contigs")
 
     (partitioned_contigs,) = partition_contigs(contigs, num_partitions)
     mags = []
@@ -191,4 +192,13 @@ def bin_contigs_semibin2(
     (collated_mags,) = collate_mags(mags)
     (collated_contig_map,) = collate_contig_maps(contig_maps)
 
-    return collated_mags, collated_contig_map
+    binned_ids = {
+        contig
+        for contig_ids in collated_contig_map.view(dict).values()
+        for contig in contig_ids
+    }
+    (unbinned_contigs,) = filter_contigs(
+        contigs, on="contig", ids=sorted(binned_ids), exclude_ids=True
+    )
+
+    return collated_mags, collated_contig_map, unbinned_contigs

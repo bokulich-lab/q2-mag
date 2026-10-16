@@ -280,13 +280,20 @@ class TestSemibin2(TestPluginBase):
             ]
         )
         collate_mags = MagicMock(return_value=("collated_mags",))
-        collate_contig_maps = MagicMock(return_value=("collated_contig_map",))
+        collated_contig_map = MagicMock()
+        collated_contig_map.view.return_value = {
+            "mag1": ["contig2", "contig1"],
+            "mag2": ["contig3"],
+        }
+        collate_contig_maps = MagicMock(return_value=(collated_contig_map,))
+        filter_contigs = MagicMock(return_value=("unbinned_contigs",))
 
         actions = {
             ("types", "partition_contigs"): partition_contigs,
             ("mag", "_bin_contigs_semibin2"): bin_partition,
             ("types", "collate_sample_data_mags"): collate_mags,
             ("types", "collate_contig_maps"): collate_contig_maps,
+            ("assembly", "filter_contigs"): filter_contigs,
         }
         ctx = MagicMock()
         ctx.get_action.side_effect = lambda plugin, action: actions[(plugin, action)]
@@ -328,7 +335,15 @@ class TestSemibin2(TestPluginBase):
         )
         collate_mags.assert_called_once_with(["mags1", "mags2"])
         collate_contig_maps.assert_called_once_with(["contig_map1", "contig_map2"])
-        self.assertTupleEqual(("collated_mags", "collated_contig_map"), obs)
+        filter_contigs.assert_called_once_with(
+            contigs,
+            on="contig",
+            ids=["contig1", "contig2", "contig3"],
+            exclude_ids=True,
+        )
+        self.assertTupleEqual(
+            ("collated_mags", collated_contig_map, "unbinned_contigs"), obs
+        )
 
 
 if __name__ == "__main__":
