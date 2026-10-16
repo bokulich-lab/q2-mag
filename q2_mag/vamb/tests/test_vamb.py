@@ -9,6 +9,7 @@ import glob
 import os
 import shutil
 import tempfile
+import pandas as pd
 import unittest
 from pathlib import Path
 from unittest.mock import ANY, call, patch
@@ -23,7 +24,9 @@ from rachis.plugin.testing import TestPluginBase
 from q2_mag.vamb.vamb import (
     _assert_reference_integrity,
     _assert_samples,
+    _assert_taxids,
     _bin_contigs_vamb,
+    _convert_taxonomy,
     _process_sample,
     _run_vamb,
     _process_vamb_arg,
@@ -142,7 +145,9 @@ class TestVAMB(TestPluginBase):
         fake_args = ["--verbose", "--minfasta", "1000", "-m", "2000"]
 
         with tempfile.TemporaryDirectory() as fake_loc:
-            obs_fp = _run_vamb("default", "samp1", fake_props, fake_loc, fake_args, "")
+            obs_fp = _run_vamb(
+                "default", "samp1", fake_props, fake_loc, fake_args, "", None
+            )
             exp_fp = os.path.join(fake_loc, "samp1")
 
             self.assertEqual(exp_fp, obs_fp)
@@ -161,6 +166,38 @@ class TestVAMB(TestPluginBase):
                 "",
             ]
             exp_cmd.extend(fake_args)
+            p1.assert_called_once_with(exp_cmd, check=True)
+
+    @patch("subprocess.run")
+    def test_run_taxvamb_ok(self, p1):
+        fake_props = {"map": "/some/where/map.bam", "contigs": "/a/b/co.fa"}
+        fake_args = ["--verbose", "--minfasta", "1000", "-m", "2000"]
+        taxonomy_fp = self.get_data_path("/taxonomy/taxonomy.tsv")
+        taxonomy_df = pd.read_csv(taxonomy_fp, sep="\t")
+
+        with tempfile.TemporaryDirectory() as fake_loc:
+            obs_fp = _run_vamb(
+                "default", "samp1", fake_props, fake_loc, fake_args, "", taxonomy_df
+            )
+            exp_fp = os.path.join(fake_loc, "samp1")
+
+            self.assertEqual(exp_fp, obs_fp)
+
+            exp_cmd = [
+                "vamb",
+                "bin",
+                "default",
+                "--fasta",
+                fake_props["contigs"],
+                "--bamdir",
+                ANY,
+                "--outdir",
+                os.path.join(fake_loc, "samp1", "bin"),
+                "-o",
+                "",
+            ]
+            exp_cmd.extend(fake_args)
+            exp_cmd.extend(["--taxonomy", os.path.join(fake_loc, "taxonomy.tsv")])
             p1.assert_called_once_with(exp_cmd, check=True)
 
     @patch("tempfile.TemporaryDirectory")
@@ -193,7 +230,9 @@ class TestVAMB(TestPluginBase):
                 dirs_exist_ok=True,
             )
 
-            _process_sample("samp1", fake_props, "default", False, fake_args, fake_loc)
+            _process_sample(
+                "samp1", fake_props, "default", False, fake_args, fake_loc, None
+            )
 
             # find the newly formed bins
             obs_bins = set(
@@ -209,7 +248,7 @@ class TestVAMB(TestPluginBase):
             self.assertSetEqual(exp_bins, obs_bins)
 
             p1.assert_called_once_with(
-                "default", "samp1", fake_props, ANY, fake_args, ""
+                "default", "samp1", fake_props, ANY, fake_args, "", None
             )
 
     @patch("q2_mag.vamb.vamb.ContigSequencesDirFmt")
@@ -246,6 +285,7 @@ class TestVAMB(TestPluginBase):
                     False,
                     args,
                     str(mock_bins),
+                    None,
                 ),
                 call(
                     "samp2",
@@ -257,6 +297,7 @@ class TestVAMB(TestPluginBase):
                     False,
                     args,
                     str(mock_bins),
+                    None,
                 ),
             ]
         )
@@ -341,6 +382,206 @@ class TestVAMB(TestPluginBase):
             common_args=p1.return_value,
         )
         self.assertTupleEqual(exp_bins, obs_bins)
+
+    def test_bin_contigs_vamb_wrapper_taxid_map_without_taxonomy(self):
+        taxid_to_contigs_fp = self.get_data_path(
+            "/taxid-to-contigids-maps/feature_map.json"
+        )
+        taxid_to_contigs_df = pd.read_json(
+            taxid_to_contigs_fp, lines=True, dtype={"name": str}
+        )
+        taxid_to_contigs_dict = taxid_to_contigs_df.set_index("name")[
+            "members"
+        ].to_dict()
+
+        with self.assertRaisesRegex(
+            ValueError, "Received `taxid_map`, but no `taxonomy` input"
+        ):
+            bin_contigs_vamb(
+                contigs=None,
+                alignment_maps=None,
+                taxid_map=taxid_to_contigs_dict,
+                taxonomy=None,
+            )
+
+    def test_bin_contigs_vamb_wrapper_taxonomy_without_taxid_map(self):
+        taxid_to_full_string_fp = self.get_data_path(
+            "/taxid-to-full-string-maps/taxonomy.tsv"
+        )
+        taxid_to_full_string_df = pd.read_csv(
+            taxid_to_full_string_fp, sep="\t", index_col="Feature ID"
+        )
+        taxid_to_full_string_df.index = taxid_to_full_string_df.index.astype(str)
+
+        with self.assertRaisesRegex(
+            ValueError, "Received `taxonomy`, but no `taxid_map` input"
+        ):
+            bin_contigs_vamb(
+                contigs=None,
+                alignment_maps=None,
+                taxid_map=None,
+                taxonomy=taxid_to_full_string_df,
+            )
+
+    def test_bin_contigs_vamb_wrapper_no_predictor_without_taxonomic_info(self):
+        with self.assertRaisesRegex(
+            ValueError, "`--p-no-predictor` flag is set, but no taxonomic information"
+        ):
+            bin_contigs_vamb(
+                contigs=None,
+                alignment_maps=None,
+                taxid_map=None,
+                taxonomy=None,
+                no_predictor=True,
+            )
+
+    @patch("q2_mag.vamb.vamb._bin_contigs_vamb")
+    @patch("q2_mag.vamb.vamb._process_common_input_params")
+    @patch("q2_mag.vamb.vamb._convert_taxonomy")
+    def test_bin_contigs_vamb_wrapper_with_taxonomic_information(self, p1, p2, p3):
+        taxid_to_contigs_fp = self.get_data_path(
+            "/taxid-to-contigids-maps/feature_map.json"
+        )
+        taxid_to_contigs_df = pd.read_json(
+            taxid_to_contigs_fp, lines=True, dtype={"name": str}
+        )
+        taxid_to_contigs_dict = taxid_to_contigs_df.set_index("name")[
+            "members"
+        ].to_dict()
+
+        taxid_to_full_string_fp = self.get_data_path(
+            "/taxid-to-full-string-maps/taxonomy.tsv"
+        )
+        taxid_to_full_string_df = pd.read_csv(
+            taxid_to_full_string_fp, sep="\t", index_col="Feature ID"
+        )
+        taxid_to_full_string_df.index = taxid_to_full_string_df.index.astype(str)
+
+        input_contigs = self.get_data_path("contigs")
+        input_maps = self.get_data_path("maps")
+        contigs = ContigSequencesDirFmt(input_contigs, mode="r")
+        maps = BAMDirFmt(input_maps, mode="r")
+
+        p1.return_value = taxid_to_full_string_df
+        p2.return_value = ["--minfasta", "1000"]
+        p3.return_value = ("bins", {"contigA": "bin1"})
+
+        obs_bins = bin_contigs_vamb(
+            contigs=contigs,
+            alignment_maps=maps,
+            taxid_map=taxid_to_contigs_dict,
+            taxonomy=taxid_to_full_string_df,
+        )
+
+        p1.assert_called_once_with(
+            taxid_map=taxid_to_contigs_dict,
+            taxonomy=taxid_to_full_string_df,
+        )
+
+        p2.assert_called_once_with(
+            processing_func=_process_vamb_arg,
+            params={
+                "min_contig_len": 2000,
+                "minfasta": 2000,
+                "threads": 8,
+                "seed": None,
+                "no_predictor": False,
+            },
+        )
+
+        p3.assert_called_once_with(
+            contigs=contigs,
+            alignment_maps=maps,
+            taxonomy=taxid_to_full_string_df,
+            multi_split=False,
+            common_args=p2.return_value,
+        )
+        self.assertTupleEqual(("bins", {"contigA": "bin1"}), obs_bins)
+
+    def test_assert_taxids_ok(self):
+        taxid_to_contigs_fp = self.get_data_path(
+            "/taxid-to-contigids-maps/feature_map.json"
+        )
+        taxid_to_full_string_fp = self.get_data_path(
+            "/taxid-to-full-string-maps/taxonomy.tsv"
+        )
+        taxid_to_contigs_df = pd.read_json(
+            taxid_to_contigs_fp, lines=True, dtype={"name": str}
+        )
+        taxid_to_contigs_dict = taxid_to_contigs_df.set_index("name")[
+            "members"
+        ].to_dict()
+        taxid_to_full_string_df = pd.read_csv(
+            taxid_to_full_string_fp, sep="\t", index_col="Feature ID"
+        )
+        taxid_to_full_string_df.index = taxid_to_full_string_df.index.astype(str)
+
+        _assert_taxids(
+            taxid_map=taxid_to_contigs_dict, taxonomy=taxid_to_full_string_df
+        )
+
+    def test_assert_taxids_missing_taxid(self):
+        taxid_to_contigs_fp = self.get_data_path(
+            "/taxid-to-contigids-maps/feature_map.json"
+        )
+        taxid_to_full_string_fp = self.get_data_path(
+            "/taxid-to-full-string-maps/taxonomy.tsv"
+        )
+        taxid_to_contigs_df = pd.read_json(
+            taxid_to_contigs_fp, lines=True, dtype={"name": str}
+        )
+        taxid_to_contigs_dict = taxid_to_contigs_df.set_index("name")[
+            "members"
+        ].to_dict()
+        taxid_to_full_string_df = pd.read_csv(
+            taxid_to_full_string_fp, sep="\t", index_col="Feature ID"
+        )
+        taxid_to_full_string_df.index = taxid_to_full_string_df.index.astype(str)
+
+        taxid_to_full_string_df = taxid_to_full_string_df.drop(index="1485")
+
+        with self.assertRaisesRegex(
+            AssertionError,
+            "The following taxonomy IDs are missing: 1485",
+        ):
+            _assert_taxids(
+                taxid_map=taxid_to_contigs_dict, taxonomy=taxid_to_full_string_df
+            )
+
+    def test_convert_taxonomy(self):
+        taxid_to_contigs_fp = self.get_data_path(
+            "/taxid-to-contigids-maps/feature_map.json"
+        )
+        taxid_to_full_string_fp = self.get_data_path(
+            "/taxid-to-full-string-maps/taxonomy.tsv"
+        )
+        taxid_to_contigs_df = pd.read_json(
+            taxid_to_contigs_fp, lines=True, dtype={"name": str}
+        )
+        taxid_to_contigs_dict = taxid_to_contigs_df.set_index("name")[
+            "members"
+        ].to_dict()
+        taxid_to_full_string_df = pd.read_csv(
+            taxid_to_full_string_fp, sep="\t", index_col="Feature ID"
+        )
+        taxid_to_full_string_df.index = taxid_to_full_string_df.index.astype(str)
+
+        obs = (
+            _convert_taxonomy(
+                taxid_map=taxid_to_contigs_dict, taxonomy=taxid_to_full_string_df
+            )
+            .sort_values("contigs")
+            .reset_index(drop=True)
+        )
+
+        exp_taxonomy_fp = self.get_data_path("/taxonomy/taxonomy.tsv")
+        exp = (
+            pd.read_csv(exp_taxonomy_fp, sep="\t")
+            .sort_values("contigs")
+            .reset_index(drop=True)
+        )
+
+        pd.testing.assert_frame_equal(obs, exp, check_dtype=False)
 
 
 if __name__ == "__main__":
