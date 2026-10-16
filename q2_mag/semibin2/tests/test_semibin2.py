@@ -47,10 +47,10 @@ class TestSemibin2(TestPluginBase):
         obs_maps = obs.file_dict()
         exp_map = maps.path / "samp1_alignment.bam"
 
-        self.assertListEqual(["samp1_alignment"], list(obs_maps))
+        self.assertListEqual(["samp1"], list(obs_maps))
         self.assertEqual(
             exp_map.read_bytes(),
-            Path(obs_maps["samp1_alignment"]).read_bytes(),
+            Path(obs_maps["samp1"]).read_bytes(),
         )
 
     @patch("subprocess.run")
