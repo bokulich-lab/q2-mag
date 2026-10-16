@@ -7,7 +7,10 @@
 # ----------------------------------------------------------------------------
 import shutil
 
+import biom
+import numpy as np
 import pandas as pd
+import pysam
 import qiime2
 from parameterized import parameterized
 from qiime2.plugin.testing import TestPluginBase
@@ -146,3 +149,69 @@ class TestAbundance(TestPluginBase):
         )
         exp_rel.columns.name = "feature-id"
         pd.testing.assert_frame_equal(obs_rel, exp_rel, check_exact=False, rtol=0.1)
+
+
+class TestContigAbundance(TestPluginBase):
+    package = "q2_mag.abundance.tests"
+
+    @parameterized.expand(
+        [
+            ("raw_contigs", ("k141_0", "k141_1")),
+            (
+                "sample_underscore",
+                ("sample_A:dPj72SpWBxMXAVyPtYqJGA", "sample_A:2Ta5AWdPGsJiCUZJ4NeP92"),
+            ),
+            (
+                "underscore_separator",
+                ("pooled_dPj72SpWBxMXAVyPtYqJGA", "pooled_2Ta5AWdPGsJiCUZJ4NeP92"),
+            ),
+            ("matching_prefix", ("contig", "contig_part")),
+        ]
+    )
+    def test_estimate_contig_abundance(self, name, contig_ids):
+        maps = BAMDirFmt()
+        sample_id = "sample_A"
+        lengths = [1000, 2000]
+        header = {
+            "HD": {"VN": "1.6", "SO": "coordinate"},
+            "SQ": [
+                {"SN": identifier, "LN": length}
+                for identifier, length in zip(contig_ids, lengths)
+            ],
+        }
+        with pysam.AlignmentFile(
+            str(maps.path / f"{sample_id}.bam"), "wb", header=header
+        ) as bam:
+            for reference_id, count in enumerate([2, 1]):
+                for i in range(count):
+                    read = pysam.AlignedSegment()
+                    read.query_name = f"read{reference_id}_{i}"
+                    read.query_sequence = "ACGT" * 25
+                    read.flag = 0
+                    read.reference_id = reference_id
+                    read.reference_start = i * 10
+                    read.mapping_quality = 60
+                    read.cigar = [(0, 100)]
+                    read.query_qualities = pysam.qualitystring_to_array("I" * 100)
+                    bam.write(read)
+
+        alignment = qiime2.Artifact.import_data("SampleData[AlignmentMap]", maps)
+        feature_lengths = qiime2.Artifact.import_data(
+            "FeatureData[SequenceCharacteristics % Properties('length')]",
+            pd.DataFrame({"length": lengths}, index=pd.Index(contig_ids, name="id")),
+        )
+        action = self.plugin.methods["estimate_abundance"]
+        for metric, expected in (
+            ("rpkm", [2e6 / 3, 1e6 / 6]),
+            ("tpm", [8e5, 2e5]),
+        ):
+            with self.subTest(metric=metric):
+                (abundance,) = action(alignment, feature_lengths, metric=metric)
+                abundance.validate("max")
+                table = abundance.view(biom.Table)
+                self.assertEqual(list(table.ids(axis="sample")), [sample_id])
+                self.assertEqual(set(table.ids(axis="observation")), set(contig_ids))
+                observed = table.to_dataframe(dense=True).loc[
+                    list(contig_ids), sample_id
+                ]
+                np.testing.assert_allclose(observed.to_numpy(), expected)
