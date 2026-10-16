@@ -5,7 +5,6 @@
 #
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
-import glob
 import os
 import tempfile
 
@@ -74,6 +73,16 @@ def _merge_frames(coverage_df: pd.DataFrame, lengths_df: pd.DataFrame) -> pd.Dat
         A merged DataFrame with summed coverage data and lengths
         for each feature per sample.
     """
+    coverage_df = coverage_df.copy()
+    # Preserve complete contig IDs. MAG references prefix each scaffold ID
+    # with the MAG UUID; aggregate those only when the full ID has no length.
+    coverage_df["feature-id"] = coverage_df["feature-id"].map(
+        lambda reference_id: (
+            reference_id
+            if reference_id in lengths_df.index
+            else reference_id.split("_", maxsplit=1)[0]
+        )
+    )
     coverage_summed = (
         coverage_df.groupby(["sample-id", "feature-id"]).sum().reset_index(drop=False)
     )
@@ -161,7 +170,7 @@ def _calculate_coverage(
 
     df = pd.read_csv(coverage_fp, sep="\t", index_col=0)
     df["sample-id"] = sample_id
-    df["feature-id"] = df.index.map(lambda x: x.split("_", maxsplit=1)[0])
+    df["feature-id"] = df.index
 
     return df
 
@@ -178,10 +187,7 @@ def estimate_abundance(
 ) -> pd.DataFrame:
     metric_func = {"rpkm": rpkm, "tpm": tpm}[metric]
 
-    sample_ids_bam = {
-        os.path.basename(x).split("_alignment")[0]: x
-        for x in glob.glob(os.path.join(str(alignment_maps), "*.bam"))
-    }
+    sample_ids_bam = alignment_maps.file_dict()
 
     # calculate coverage for each sample
     with tempfile.TemporaryDirectory() as temp_dir:
