@@ -5,7 +5,6 @@
 #
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
-import glob
 import os
 import tempfile
 
@@ -178,10 +177,7 @@ def estimate_abundance(
 ) -> pd.DataFrame:
     metric_func = {"rpkm": rpkm, "tpm": tpm}[metric]
 
-    sample_ids_bam = {
-        os.path.basename(x).split("_alignment")[0]: x
-        for x in glob.glob(os.path.join(str(alignment_maps), "*.bam"))
-    }
+    sample_ids_bam = alignment_maps.file_dict()
 
     # calculate coverage for each sample
     with tempfile.TemporaryDirectory() as temp_dir:

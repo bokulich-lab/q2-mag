@@ -5,8 +5,11 @@
 #
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
+import shutil
+
 import pandas as pd
 import qiime2
+from parameterized import parameterized
 from qiime2.plugin.testing import TestPluginBase
 
 from q2_mag.abundance.abundance import rpkm, tpm, estimate_abundance
@@ -80,9 +83,26 @@ class TestAbundance(TestPluginBase):
         )
         pd.testing.assert_series_equal(obs, exp)
 
-    def test_estimate_mag_abundance(self):
+    @parameterized.expand(["legacy", "plain", "mixed", "internal_alignment"])
+    def test_estimate_mag_abundance(self, naming):
+        maps = BAMDirFmt()
+        sample_ids = []
+        for i, source in enumerate(
+            sorted(self.mapped_reads.view(BAMDirFmt).path.iterdir()), start=1
+        ):
+            sample_id = f"sample{i}"
+            if naming == "internal_alignment" and i == 1:
+                sample_id = "sample1_alignment_batch"
+            sample_ids.append(sample_id)
+            suffix = (
+                "_alignment"
+                if naming == "legacy" or (naming == "mixed" and i % 2)
+                else ""
+            )
+            shutil.copyfile(source, maps.path / f"{sample_id}{suffix}.bam")
+
         obs = estimate_abundance(
-            alignment_maps=self.mapped_reads.view(BAMDirFmt),
+            alignment_maps=maps,
             feature_lengths=self.mag_length_df,
             metric="rpkm",
         )
@@ -103,7 +123,7 @@ class TestAbundance(TestPluginBase):
                     260.3,
                 ],
             },
-            index=pd.Index([f"sample{i}" for i in range(1, 6)], name="sample-id"),
+            index=pd.Index(sample_ids, name="sample-id"),
         )
         exp.columns.name = "feature-id"
         pd.testing.assert_frame_equal(obs, exp, check_exact=False, rtol=0.1)
@@ -122,7 +142,7 @@ class TestAbundance(TestPluginBase):
                 "2317a4bd-778d-46fa-901c-88428b2b863e": [0.0, 1.0, 0.5, 0.95, 0.05],
                 "890676ee-1310-477d-b713-457ef661b8f3": [1.0, 0.0, 0.5, 0.05, 0.95],
             },
-            index=pd.Index([f"sample{i}" for i in range(1, 6)], name="sample-id"),
+            index=pd.Index(sample_ids, name="sample-id"),
         )
         exp_rel.columns.name = "feature-id"
         pd.testing.assert_frame_equal(obs_rel, exp_rel, check_exact=False, rtol=0.1)
