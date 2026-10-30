@@ -22,6 +22,7 @@ from q2_types.per_sample_sequences import (
 from rachis.plugin.testing import TestPluginBase
 
 from q2_mag.vamb.vamb import (
+    _assert_contigs,
     _assert_reference_integrity,
     _assert_samples,
     _assert_taxids,
@@ -138,6 +139,38 @@ class TestVAMB(TestPluginBase):
                 "for samples: samp2. Please check your inputs and try again.",
             ):
                 _assert_samples(contigs, maps)
+
+    def test_assert_contigs_ok(self):
+        contigs_path = self.get_data_path("contigs")
+        sample_set = {
+            "samp1": {
+                "contigs": str(Path(contigs_path) / "samp1_contigs.fa"),
+            },
+        }
+
+        taxonomy_fp = self.get_data_path("/taxonomy/samp1_contigs_taxonomy.tsv")
+        taxonomy_df = pd.read_csv(taxonomy_fp, sep="\t")
+
+        _assert_contigs(taxonomy_df, sample_set, "contigs")
+
+    def test_assert_contigs_non_matching(self):
+        contigs_path = self.get_data_path("contigs")
+        sample_set = {
+            "samp1": {
+                "contigs": str(Path(contigs_path) / "samp1_contigs.fa"),
+            },
+        }
+
+        taxonomy_fp = self.get_data_path("/taxonomy/taxonomy.tsv")
+        taxonomy_df = pd.read_csv(taxonomy_fp, sep="\t")
+
+        with self.assertRaisesRegex(
+            ValueError,
+            r"At least one contig ID, in 1\+ samples, is missing from the taxonomical "
+            r"classification provided. The following samples have contig IDs not "
+            r"present in the taxonomy:",
+        ):
+            _assert_contigs(taxonomy_df, sample_set, "contigs")
 
     @patch("subprocess.run")
     def test_run_vamb_ok(self, p1):
@@ -327,6 +360,59 @@ class TestVAMB(TestPluginBase):
             ],
         ]
         self.assertListEqual(exp_bins, obs_bins)
+
+    @patch("q2_mag.vamb.vamb._assert_contigs")
+    @patch("q2_mag.vamb.vamb.MultiFASTADirectoryFormat")
+    @patch("q2_mag.vamb.vamb._process_sample")
+    def test_bin_contigs_vamb_with_taxonomy(self, p1, p2, p3):
+        input_contigs = self.get_data_path("contigs")
+        input_maps = self.get_data_path("maps")
+        contigs = ContigSequencesDirFmt(input_contigs, mode="r")
+        maps = BAMDirFmt(input_maps, mode="r")
+
+        taxonomy_fp = self.get_data_path("/taxonomy/taxonomy.tsv")
+        taxonomy_df = pd.read_csv(taxonomy_fp, sep="\t")
+        args = ["--verbose", "--minfasta", "1000", "-m", "2000"]
+
+        mock_bins = MultiFASTADirectoryFormat(self.get_data_path("bins"), "r")
+        p2.return_value = mock_bins
+
+        obs_bins, obs_map = _bin_contigs_vamb(contigs, maps, taxonomy_df, False, args)
+
+        self.assertIsInstance(obs_bins, MultiFASTADirectoryFormat)
+        sample_set = {
+            "samp1": {
+                "contigs": self.get_data_path("/contigs/samp1_contigs.fa"),
+                "map": self.get_data_path("/maps/samp1_alignment.bam"),
+            },
+            "samp2": {
+                "contigs": self.get_data_path("/contigs/samp2_contigs.fa"),
+                "map": self.get_data_path("/maps/samp2_alignment.bam"),
+            },
+        }
+        p3.assert_called_once_with(taxonomy_df, sample_set, "contigs")
+        p1.assert_has_calls(
+            [
+                call(
+                    "samp1",
+                    sample_set["samp1"],
+                    "taxvamb",
+                    False,
+                    args,
+                    str(mock_bins),
+                    taxonomy_df,
+                ),
+                call(
+                    "samp2",
+                    sample_set["samp2"],
+                    "taxvamb",
+                    False,
+                    args,
+                    str(mock_bins),
+                    taxonomy_df,
+                ),
+            ]
+        )
 
     @patch("q2_mag.vamb.vamb.MultiFASTADirectoryFormat")
     @patch("q2_mag.vamb.vamb._process_sample")

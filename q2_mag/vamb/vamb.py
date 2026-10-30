@@ -201,6 +201,48 @@ def _assert_taxids(taxid_map: dict, taxonomy: pd.DataFrame) -> list[str]:
     return list(taxids)
 
 
+def _assert_contigs(taxonomy: pd.DataFrame, sample_set: dict, contig_key: str) -> None:
+    """Asserts that all contig IDs in the provided ``sample_set`` are also found in
+    ``taxonomy``.
+
+    Args:
+        taxonomy (pd.DataFrame): Table mapping contig IDs to full taxonomy strings.
+        sample_set (dict): Mapping between sample IDs to composition and abundance
+            files.
+        contig_key : str
+            Key for a sample's contig FASTA path.
+
+    Raises:
+        AssertionError: if 1+ contig IDs are missing in ``taxonomy``.
+    """
+    failed_samples = {}
+
+    taxonomy_contig_ids = set(taxonomy["contigs"])
+
+    for samp, props in sample_set.items():
+        with pysam.FastaFile(props[contig_key]) as fasta:
+            contigs_in_sample = set(fasta.references)
+
+        missing_contig_ids = contigs_in_sample - taxonomy_contig_ids
+
+        if missing_contig_ids:
+            failed_samples[samp] = missing_contig_ids
+
+    if failed_samples:
+        failed_sample_details = ", ".join(
+            ("\n  " f"Sample {sample}: {", ".join(contigs)}")
+            for sample, contigs in failed_samples.items()
+        )
+
+        raise ValueError(
+            "At least one contig ID, in 1+ samples, is missing from the taxonomical "
+            "classification provided. The following samples have contig IDs not "
+            f"present in the taxonomy: {failed_sample_details}."
+        )
+
+    return None
+
+
 def _convert_taxonomy(taxid_map: dict, taxonomy: pd.DataFrame) -> pd.DataFrame:
     """Convert the provided taxonomy annotations into the format expected by TaxVAMB.
 
@@ -239,9 +281,13 @@ def _bin_contigs_vamb(
     multi_split: bool,
     common_args: list,
 ) -> (MultiFASTADirectoryFormat, dict):
-    binner = "taxvamb" if taxonomy is not None else "default"
     sample_set = _assert_samples(contigs, alignment_maps)
     _assert_reference_integrity(sample_set, "contigs", "map")
+
+    binner = "default"
+    if taxonomy is not None:
+        binner = "taxvamb"
+        _assert_contigs(taxonomy, sample_set, "contigs")
 
     bins = MultiFASTADirectoryFormat()
     for samp, props in sample_set.items():
