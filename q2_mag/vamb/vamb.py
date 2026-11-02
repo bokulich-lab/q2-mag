@@ -315,7 +315,6 @@ def bin_contigs_vamb(
     # multi_split: bool = False,
     min_contig_len: int = 2000,
     minfasta: int = 2000,
-    unclassified_as_empty: bool = False,
     no_predictor: bool = False,
     threads: int = 8,
     seed: int | None = None,
@@ -343,7 +342,6 @@ def bin_contigs_vamb(
         "taxid_map",
         "taxonomy",
         "multi_split",
-        "unclassified_as_empty",
         "ignore_args",
     ]
     if (taxid_map is None) and (taxonomy is None):
@@ -357,9 +355,7 @@ def bin_contigs_vamb(
 
     if (taxid_map is not None) and (taxonomy is not None):
         taxonomy = _convert_taxonomy(
-            taxid_map=taxid_map,
-            taxonomy=taxonomy,
-            unclassified_label="" if unclassified_as_empty else "unknown",
+            taxid_map=taxid_map, taxonomy=taxonomy, unclassified_label="unknown"
         )
 
     return _bin_contigs_vamb(

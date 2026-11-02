@@ -528,7 +528,6 @@ plugin.methods.register_function(
         # "multi_split": Bool,
         "min_contig_len": Int % Range(1, None),
         "minfasta": Int % Range(1, None),
-        "unclassified_as_empty": Bool,
         "threads": Int % Range(1, None),
         "seed": Int % Range(0, None),
         "no_predictor": Bool,
@@ -556,11 +555,6 @@ plugin.methods.register_function(
         "minfasta": (
             "Output all bins with a total size (sum of contig lengths) greater than "
             "or equal to this number."
-        ),
-        "unclassified_as_empty": (
-            "When set, replace taxonomic predictions with a TaxID 0 with an empty "
-            "string (''). Unclassified contigs are otherwise replaced with the string "
-            "'unknown'. Ignored when no taxonomic information is provided."
         ),
         "no_predictor": (
             "Do not refine input taxonomy with Taxometer. Ignored when no taxonomic "
