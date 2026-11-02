@@ -48,7 +48,7 @@ from qiime2.core.type import (
 )
 from qiime2.plugin import Plugin, Citations
 import q2_mag
-from q2_types.feature_data_mag import MAG
+from q2_types.feature_data_mag import MAG, Contig
 from q2_types.per_sample_sequences import AlignmentMap
 from q2_types.reference_db import ReferenceDB
 from q2_types.genome_data import GenomeData, Proteins
@@ -490,7 +490,7 @@ plugin.methods.register_function(
 plugin.methods.register_function(
     function=q2_mag.utils.get_feature_lengths,
     inputs={
-        "features": FeatureData[MAG | Sequence] | SampleData[MAGs | Contigs],
+        "features": FeatureData[MAG | Sequence | Contig] | SampleData[MAGs | Contigs],
     },
     parameters={},
     outputs=[("lengths", FeatureData[SequenceCharacteristics % Properties("length")])],
