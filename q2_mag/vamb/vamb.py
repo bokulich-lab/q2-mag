@@ -243,9 +243,7 @@ def _assert_contigs(taxonomy: pd.DataFrame, sample_set: dict, contig_key: str) -
     return None
 
 
-def _convert_taxonomy(
-    taxid_map: dict, taxonomy: pd.DataFrame, unclassified_label: str
-) -> pd.DataFrame:
+def _convert_taxonomy(taxid_map: dict, taxonomy: pd.DataFrame) -> pd.DataFrame:
     """Convert the provided taxonomy annotations into the format expected by TaxVAMB.
 
     Args:
@@ -269,11 +267,9 @@ def _convert_taxonomy(
 
     s = pd.Series({k: taxid_map[k] for k in taxids}).explode()
 
-    # Label unclassified contigs (i.e., contigs with tax ID 0)
-    predictions = s.index.map(taxonomy["Taxon"])
-    predictions = predictions.where(s.index != "0", unclassified_label)
-
-    return pd.DataFrame({"contigs": s.values, "predictions": predictions})
+    return pd.DataFrame(
+        {"contigs": s.values, "predictions": s.index.map(taxonomy["Taxon"])}
+    )
 
 
 def _bin_contigs_vamb(
@@ -354,9 +350,7 @@ def bin_contigs_vamb(
     )
 
     if (taxid_map is not None) and (taxonomy is not None):
-        taxonomy = _convert_taxonomy(
-            taxid_map=taxid_map, taxonomy=taxonomy, unclassified_label="unknown"
-        )
+        taxonomy = _convert_taxonomy(taxid_map=taxid_map, taxonomy=taxonomy)
 
     return _bin_contigs_vamb(
         contigs=contigs,

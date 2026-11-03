@@ -562,7 +562,6 @@ class TestVAMB(TestPluginBase):
         p1.assert_called_once_with(
             taxid_map=taxid_to_contigs_dict,
             taxonomy=taxid_to_full_string_df,
-            unclassified_label="unknown",
         )
 
         p2.assert_called_once_with(
@@ -657,7 +656,6 @@ class TestVAMB(TestPluginBase):
             _convert_taxonomy(
                 taxid_map=taxid_to_contigs_dict,
                 taxonomy=taxid_to_full_string_df,
-                unclassified_label="unknown",
             )
             .sort_values("contigs")
             .reset_index(drop=True)
