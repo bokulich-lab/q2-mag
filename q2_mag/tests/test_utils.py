@@ -5,13 +5,21 @@
 #
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
 import pandas as pd
 from q2_types.feature_data import DNASequencesDirectoryFormat
-from q2_types.per_sample_sequences import ContigSequencesDirFmt, MultiMAGSequencesDirFmt
+from q2_types.per_sample_sequences import (
+    BAMDirFmt,
+    ContigSequencesDirFmt,
+    MultiMAGSequencesDirFmt,
+)
 from qiime2.plugin.testing import TestPluginBase
 
 from q2_types.feature_data_mag import MAGSequencesDirFmt
 from ..utils import (
+    _align_samples_before_binning,
     _construct_param,
     _process_common_input_params,
     get_feature_lengths,
@@ -147,6 +155,44 @@ class TestUtils(TestPluginBase):
             "--m",
         ]
         self.assertSetEqual(set(observed), set(expected))
+
+    def test_align_samples_before_binning_pairs_by_id(self):
+        with (
+            TemporaryDirectory() as contigs_path,
+            TemporaryDirectory() as maps_path,
+        ):
+            expected = {}
+            for sample, bam_name in (
+                ("c1_l2", "c1_l2.bam"),
+                ("c1_l20", "c1_l20_alignment.bam"),
+            ):
+                contig = Path(contigs_path) / f"{sample}_contigs.fa"
+                bam = Path(maps_path) / bam_name
+                contig.touch()
+                bam.touch()
+                expected[sample] = {"contigs": str(contig), "map": str(bam)}
+
+            contigs = ContigSequencesDirFmt(contigs_path, mode="r")
+            maps = BAMDirFmt(maps_path, mode="r")
+
+            self.assertDictEqual(_align_samples_before_binning(contigs, maps), expected)
+
+    def test_align_samples_before_binning_mismatched_ids(self):
+        contigs = ContigSequencesDirFmt(self.get_data_path("contigs"), mode="r")
+        for bam_samples in (("sample1",), ("sample1", "sample3")):
+            with self.subTest(bam_samples=bam_samples), TemporaryDirectory() as path:
+                for sample in bam_samples:
+                    (Path(path) / f"{sample}_alignment.bam").touch()
+                maps = BAMDirFmt(path, mode="r")
+
+                with self.assertRaisesRegex(
+                    Exception,
+                    "Contigs and alignment maps should belong to the same sample "
+                    "set. You provided contigs for samples: sample1,sample2 but "
+                    f"maps for samples: {','.join(bam_samples)}\\. Please check "
+                    "your inputs and try again.",
+                ):
+                    _align_samples_before_binning(contigs, maps)
 
     def test_get_feature_lengths_mag(self):
         self.get_feature_lengths_test_helper(

@@ -22,7 +22,6 @@ from rachis.plugin.testing import TestPluginBase
 
 from q2_mag.vamb.vamb import (
     _assert_reference_integrity,
-    _assert_samples,
     _bin_contigs_vamb,
     _process_sample,
     _run_vamb,
@@ -73,86 +72,6 @@ class TestVAMB(TestPluginBase):
             "or length:",
         ):
             _assert_reference_integrity(sample_set, "contigs", "map")
-
-    def test_assert_samples_ok(self):
-        contigs_path = self.get_data_path("contigs")
-        maps_path = self.get_data_path("maps")
-
-        contigs = ContigSequencesDirFmt(contigs_path, mode="r")
-        maps = BAMDirFmt(maps_path, mode="r")
-
-        obs_samples = _assert_samples(contigs, maps)
-
-        exp_samples = {
-            "samp1": {
-                "contigs": str(Path(contigs_path) / "samp1_contigs.fa"),
-                "map": str(Path(maps_path) / "samp1_alignment.bam"),
-            },
-            "samp2": {
-                "contigs": str(Path(contigs_path) / "samp2_contigs.fa"),
-                "map": str(Path(maps_path) / "samp2_alignment.bam"),
-            },
-        }
-        self.assertDictEqual(exp_samples, obs_samples)
-
-    def test_assert_samples_pairs_by_id(self):
-        with (
-            tempfile.TemporaryDirectory() as contigs_path,
-            tempfile.TemporaryDirectory() as maps_path,
-        ):
-            expected = {}
-            for sample in ("c1_l2", "c1_l20"):
-                contig = Path(contigs_path) / f"{sample}_contigs.fa"
-                bam = Path(maps_path) / f"{sample}.bam"
-                contig.touch()
-                bam.touch()
-                expected[sample] = {"contigs": str(contig), "map": str(bam)}
-
-            contigs = ContigSequencesDirFmt(contigs_path, mode="r")
-            maps = BAMDirFmt(maps_path, mode="r")
-
-            self.assertDictEqual(_assert_samples(contigs, maps), expected)
-
-    def test_assert_samples_uneven(self):
-        contigs_path = self.get_data_path("contigs")
-        with tempfile.TemporaryDirectory() as maps_path:
-            map_path = Path(self.get_data_path("maps")) / "samp1_alignment.bam"
-            shutil.copy(map_path, maps_path)
-
-            contigs = ContigSequencesDirFmt(contigs_path, mode="r")
-            maps = BAMDirFmt(maps_path, mode="r")
-
-            with self.assertRaisesRegex(
-                Exception,
-                "Contigs and alignment maps should belong to the same sample "
-                "set. You provided contigs for samples: samp1,samp2 but maps "
-                "for samples: samp1. Please check your inputs and try again.",
-            ):
-                _assert_samples(contigs, maps)
-
-    def test_assert_samples_non_matching(self):
-        with tempfile.TemporaryDirectory() as tempdir:
-            contigs_path = Path(tempdir) / "contigs-path"
-            maps_path = Path(tempdir) / "maps-path"
-            os.makedirs(contigs_path)
-            os.makedirs(maps_path)
-
-            contig_path = Path(self.get_data_path("contigs")) / "samp1_contigs.fa"
-            map_path = Path(self.get_data_path("maps")) / "samp2_alignment.bam"
-
-            shutil.copy(contig_path, contigs_path)
-            shutil.copy(map_path, maps_path)
-
-            contigs = ContigSequencesDirFmt(contigs_path, mode="r")
-            maps = BAMDirFmt(maps_path, mode="r")
-
-            with self.assertRaisesRegex(
-                Exception,
-                "Contigs and alignment maps should belong to the same sample"
-                " set. You provided contigs for samples: samp1 but maps "
-                "for samples: samp2. Please check your inputs and try again.",
-            ):
-                _assert_samples(contigs, maps)
 
     @patch("subprocess.run")
     def test_run_vamb_ok(self, p1):

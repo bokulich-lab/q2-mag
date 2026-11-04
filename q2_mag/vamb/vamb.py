@@ -18,7 +18,11 @@ from q2_types.per_sample_sequences import (
     MultiFASTADirectoryFormat,
 )
 from q2_mag.metabat2.metabat2 import _generate_contig_map
-from q2_mag.utils import _process_common_input_params, run_command
+from q2_mag.utils import (
+    _align_samples_before_binning,
+    _process_common_input_params,
+    run_command,
+)
 from q2_mag.vamb.utils import _process_vamb_arg
 
 
@@ -84,13 +88,13 @@ def _process_sample(
 
 
 def _assert_reference_integrity(
-    sample_set: dict[str], contig_key: str, map_key: str
+    sample_set: dict[str, dict[str, str]], contig_key: str, map_key: str
 ) -> None:
     """Verify that each sample's FASTA and BAM references are identical.
 
     Parameters
     ----------
-    sample_set : dict[str]
+    sample_set : dict[str, dict[str, str]]
         Mapping of sample identifiers to their associated file paths.
     contig_key : str
         Key for a sample's contig FASTA path.
@@ -133,30 +137,6 @@ def _assert_reference_integrity(
     return None
 
 
-def _assert_samples(
-    contigs: ContigSequencesDirFmt,
-    alignment_maps: BAMDirFmt,
-) -> dict:
-    contigs_by_sample = contigs.sample_dict()
-    maps_by_sample = alignment_maps.file_dict()
-
-    fasta_samples = contigs_by_sample.keys()
-    bam_samples = maps_by_sample.keys()
-
-    if fasta_samples != bam_samples:
-        raise Exception(
-            "Contigs and alignment maps should belong to the same sample set. "
-            f'You provided contigs for samples: {",".join(fasta_samples)} '
-            f'but maps for samples: {",".join(bam_samples)}. Please check '
-            "your inputs and try again."
-        )
-
-    return {
-        sample: {"contigs": contig_path, "map": maps_by_sample[sample]}
-        for sample, contig_path in contigs_by_sample.items()
-    }
-
-
 def _bin_contigs_vamb(
     contigs: ContigSequencesDirFmt,
     alignment_maps: BAMDirFmt,
@@ -165,7 +145,7 @@ def _bin_contigs_vamb(
     common_args: list,
 ) -> (MultiFASTADirectoryFormat, dict):
     binner = "taxvamb" if taxonomy is not None else "default"
-    sample_set = _assert_samples(contigs, alignment_maps)
+    sample_set = _align_samples_before_binning(contigs, alignment_maps)
     _assert_reference_integrity(sample_set, "contigs", "map")
 
     bins = MultiFASTADirectoryFormat()
