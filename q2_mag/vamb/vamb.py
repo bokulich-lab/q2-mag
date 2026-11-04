@@ -10,7 +10,6 @@ import os.path
 import shutil
 import tempfile
 import pysam
-from pathlib import Path
 from uuid import uuid4
 
 from q2_types.per_sample_sequences import (
@@ -137,15 +136,14 @@ def _assert_reference_integrity(
 def _assert_samples(
     contigs: ContigSequencesDirFmt,
     alignment_maps: BAMDirFmt,
-    taxonomy: dict | None = None,
 ) -> dict:
-    fasta_fps = sorted(contigs.sample_dict().values())
-    bam_fps = sorted(glob.glob(os.path.join(str(alignment_maps), "*.bam")))
+    contigs_by_sample = contigs.sample_dict()
+    maps_by_sample = alignment_maps.file_dict()
 
-    fasta_samples = contigs.sample_dict().keys()
-    bam_samples = [Path(fp).stem.rsplit("_alignment", 1)[0] for fp in bam_fps]
+    fasta_samples = contigs_by_sample.keys()
+    bam_samples = maps_by_sample.keys()
 
-    if set(fasta_samples) != set(bam_samples):
+    if fasta_samples != bam_samples:
         raise Exception(
             "Contigs and alignment maps should belong to the same sample set. "
             f'You provided contigs for samples: {",".join(fasta_samples)} '
@@ -154,8 +152,8 @@ def _assert_samples(
         )
 
     return {
-        s: {"contigs": fasta_fps[i], "map": bam_fps[i]}
-        for i, s in enumerate(fasta_samples)
+        sample: {"contigs": contig_path, "map": maps_by_sample[sample]}
+        for sample, contig_path in contigs_by_sample.items()
     }
 
 
@@ -167,7 +165,7 @@ def _bin_contigs_vamb(
     common_args: list,
 ) -> (MultiFASTADirectoryFormat, dict):
     binner = "taxvamb" if taxonomy is not None else "default"
-    sample_set = _assert_samples(contigs, alignment_maps, taxonomy)
+    sample_set = _assert_samples(contigs, alignment_maps)
     _assert_reference_integrity(sample_set, "contigs", "map")
 
     bins = MultiFASTADirectoryFormat()

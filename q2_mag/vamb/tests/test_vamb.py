@@ -95,6 +95,24 @@ class TestVAMB(TestPluginBase):
         }
         self.assertDictEqual(exp_samples, obs_samples)
 
+    def test_assert_samples_pairs_by_id(self):
+        with (
+            tempfile.TemporaryDirectory() as contigs_path,
+            tempfile.TemporaryDirectory() as maps_path,
+        ):
+            expected = {}
+            for sample in ("c1_l2", "c1_l20"):
+                contig = Path(contigs_path) / f"{sample}_contigs.fa"
+                bam = Path(maps_path) / f"{sample}.bam"
+                contig.touch()
+                bam.touch()
+                expected[sample] = {"contigs": str(contig), "map": str(bam)}
+
+            contigs = ContigSequencesDirFmt(contigs_path, mode="r")
+            maps = BAMDirFmt(maps_path, mode="r")
+
+            self.assertDictEqual(_assert_samples(contigs, maps), expected)
+
     def test_assert_samples_uneven(self):
         contigs_path = self.get_data_path("contigs")
         with tempfile.TemporaryDirectory() as maps_path:
