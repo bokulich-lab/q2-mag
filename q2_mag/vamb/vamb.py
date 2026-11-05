@@ -11,7 +11,6 @@ import shutil
 import tempfile
 import pandas as pd
 import pysam
-from pathlib import Path
 from uuid import uuid4
 
 from q2_types.per_sample_sequences import (
@@ -20,7 +19,11 @@ from q2_types.per_sample_sequences import (
     MultiFASTADirectoryFormat,
 )
 from q2_mag.metabat2.metabat2 import _generate_contig_map
-from q2_mag.utils import _process_common_input_params, run_command
+from q2_mag.utils import (
+    _align_samples_before_binning,
+    _process_common_input_params,
+    run_command,
+)
 from q2_mag.vamb.utils import _process_vamb_arg
 
 
@@ -99,13 +102,13 @@ def _process_sample(
 
 
 def _assert_reference_integrity(
-    sample_set: dict[str], contig_key: str, map_key: str
+    sample_set: dict[str, dict[str, str]], contig_key: str, map_key: str
 ) -> None:
     """Verify that each sample's FASTA and BAM references are identical.
 
     Parameters
     ----------
-    sample_set : dict[str]
+    sample_set : dict[str, dict[str, str]]
         Mapping of sample identifiers to their associated file paths.
     contig_key : str
         Key for a sample's contig FASTA path.
@@ -146,30 +149,6 @@ def _assert_reference_integrity(
         )
 
     return None
-
-
-def _assert_samples(
-    contigs: ContigSequencesDirFmt,
-    alignment_maps: BAMDirFmt,
-) -> dict:
-    fasta_fps = sorted(contigs.sample_dict().values())
-    bam_fps = sorted(glob.glob(os.path.join(str(alignment_maps), "*.bam")))
-
-    fasta_samples = contigs.sample_dict().keys()
-    bam_samples = [Path(fp).stem.rsplit("_alignment", 1)[0] for fp in bam_fps]
-
-    if set(fasta_samples) != set(bam_samples):
-        raise Exception(
-            "Contigs and alignment maps should belong to the same sample set. "
-            f'You provided contigs for samples: {",".join(fasta_samples)} '
-            f'but maps for samples: {",".join(bam_samples)}. Please check '
-            "your inputs and try again."
-        )
-
-    return {
-        s: {"contigs": fasta_fps[i], "map": bam_fps[i]}
-        for i, s in enumerate(fasta_samples)
-    }
 
 
 def _assert_taxids(taxid_map: dict, taxonomy: pd.DataFrame) -> list[str]:
@@ -275,11 +254,11 @@ def _convert_taxonomy(taxid_map: dict, taxonomy: pd.DataFrame) -> pd.DataFrame:
 def _bin_contigs_vamb(
     contigs: ContigSequencesDirFmt,
     alignment_maps: BAMDirFmt,
-    taxonomy: dict | None,
+    taxonomy: pd.DataFrame | None,
     multi_split: bool,
     common_args: list,
 ) -> (MultiFASTADirectoryFormat, dict):
-    sample_set = _assert_samples(contigs, alignment_maps)
+    sample_set = _align_samples_before_binning(contigs, alignment_maps)
     _assert_reference_integrity(sample_set, "contigs", "map")
 
     binner = "default"

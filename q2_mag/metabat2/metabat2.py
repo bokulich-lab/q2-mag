@@ -10,7 +10,6 @@ import os.path
 import re
 import shutil
 import tempfile
-from pathlib import Path
 from uuid import uuid4
 
 from q2_types.feature_data import DNAIterator
@@ -21,29 +20,12 @@ from q2_types.per_sample_sequences import (
 )
 import skbio
 
-from q2_mag.utils import _process_common_input_params, run_command
+from q2_mag.utils import (
+    _align_samples_before_binning,
+    _process_common_input_params,
+    run_command,
+)
 from q2_mag.metabat2.utils import _process_metabat2_arg
-
-
-def _assert_samples(contigs, maps) -> dict:
-    contig_fps = contigs.sample_dict().values()
-    map_fps = glob.glob(os.path.join(str(maps), "*.bam"))
-    contig_fps, map_fps = sorted(contig_fps), sorted(map_fps)
-
-    contig_samples = contigs.sample_dict().keys()
-    map_samples = [Path(fp).stem.rsplit("_alignment", 1)[0] for fp in map_fps]
-    if set(contig_samples) != set(map_samples):
-        raise Exception(
-            "Contigs and alignment maps should belong to the same sample set. "
-            f'You provided contigs for samples: {",".join(contig_samples)} '
-            f'but maps for samples: {",".join(map_samples)}. Please check '
-            "your inputs and try again."
-        )
-
-    return {
-        s: {"contigs": contig_fps[i], "map": map_fps[i]}
-        for i, s in enumerate(contig_samples)
-    }
 
 
 def _estimate_depth(samp_name, samp_props, loc):
@@ -120,7 +102,7 @@ def _generate_contig_map(bins: MultiFASTADirectoryFormat) -> dict:
 def _bin_contigs_metabat(
     contigs: ContigSequencesDirFmt, alignment_maps: BAMDirFmt, common_args: list
 ) -> (MultiFASTADirectoryFormat, dict, ContigSequencesDirFmt):
-    sample_set = _assert_samples(contigs, alignment_maps)
+    sample_set = _align_samples_before_binning(contigs, alignment_maps)
 
     bins = MultiFASTADirectoryFormat()
     unbinned = ContigSequencesDirFmt()

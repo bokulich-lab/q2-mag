@@ -19,8 +19,12 @@ from q2_types.per_sample_sequences import (
     MultiFASTADirectoryFormat,
 )
 
-from q2_mag.utils import _process_common_input_params, run_command
-from q2_mag.metabat2.metabat2 import _assert_samples, _generate_contig_map
+from q2_mag.utils import (
+    _align_samples_before_binning,
+    _process_common_input_params,
+    run_command,
+)
+from q2_mag.metabat2.metabat2 import _generate_contig_map
 from q2_mag.semibin2.utils import _process_semibin2_arg
 
 
@@ -85,7 +89,7 @@ def _bin_partition_contigs_semibin2(
     common_args: list,
 ) -> (MultiFASTADirectoryFormat, dict):
     filtered_alignment_maps = _filter_alignment_maps(contigs, alignment_maps)
-    sample_set = _assert_samples(contigs, filtered_alignment_maps)
+    sample_set = _align_samples_before_binning(contigs, filtered_alignment_maps)
 
     bins = MultiFASTADirectoryFormat()
     for samp, props in sample_set.items():

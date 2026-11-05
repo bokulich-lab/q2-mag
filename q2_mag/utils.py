@@ -14,7 +14,11 @@ import skbio
 from q2_types.feature_data import DNASequencesDirectoryFormat
 
 from q2_types.feature_data_mag import MAGSequencesDirFmt
-from q2_types.per_sample_sequences import MultiMAGSequencesDirFmt, ContigSequencesDirFmt
+from q2_types.per_sample_sequences import (
+    BAMDirFmt,
+    ContigSequencesDirFmt,
+    MultiMAGSequencesDirFmt,
+)
 
 EXTERNAL_CMD_WARNING = (
     "Running external command line application(s). "
@@ -80,6 +84,31 @@ def _process_common_input_params(processing_func, params: dict) -> List[str]:
 
 def colorify(string: str):
     return "%s%s%s" % ("\033[1;32m", string, "\033[0m")
+
+
+def _align_samples_before_binning(
+    contigs: ContigSequencesDirFmt,
+    alignment_maps: BAMDirFmt,
+) -> dict[str, dict[str, str]]:
+    """Validate that sample IDs match and pair each sample's FASTA and BAM paths."""
+    contigs_by_sample = contigs.sample_dict()
+    maps_by_sample = alignment_maps.file_dict()
+
+    fasta_samples = contigs_by_sample.keys()
+    bam_samples = maps_by_sample.keys()
+
+    if fasta_samples != bam_samples:
+        raise Exception(
+            "Contigs and alignment maps should belong to the same sample set. "
+            f'You provided contigs for samples: {",".join(fasta_samples)} '
+            f'but maps for samples: {",".join(bam_samples)}. Please check '
+            "your inputs and try again."
+        )
+
+    return {
+        sample: {"contigs": contig_path, "map": maps_by_sample[sample]}
+        for sample, contig_path in contigs_by_sample.items()
+    }
 
 
 def get_feature_lengths(
