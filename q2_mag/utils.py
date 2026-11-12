@@ -11,6 +11,7 @@ from typing import List, Union
 
 import pandas as pd
 import skbio
+from q2_assembly._action_params import ALLOWED_SEPARATORS
 from q2_types.feature_data import DNASequencesDirectoryFormat
 
 from q2_types.feature_data_mag import MAGSequencesDirFmt
@@ -86,11 +87,31 @@ def colorify(string: str):
     return "%s%s%s" % ("\033[1;32m", string, "\033[0m")
 
 
+def _get_sample_ids(contigs: ContigSequencesDirFmt) -> set[str]:
+    """Returns a list of sample IDs found in the contigs provided."""
+    return None
+
+
 def _align_samples_before_binning(
     contigs: ContigSequencesDirFmt,
     alignment_maps: BAMDirFmt,
+    binning_workflow: str = "single-sample",  # Default provides backwards compatability
+    separator: str = ":",
 ) -> dict[str, dict[str, str]]:
     """Validate that sample IDs match and pair each sample's FASTA and BAM paths."""
+    valid_workflows = ("single-sample", "multi-sample", "co-assembly")
+    if binning_workflow not in valid_workflows:
+        raise ValueError(
+            "Binning workflow must be one of single-sample, multi-sample, or "
+            f"co-assembly. You provided: {binning_workflow}."
+        )
+
+    if separator not in ALLOWED_SEPARATORS:
+        raise ValueError(
+            f"Separator must be one of {",".join(ALLOWED_SEPARATORS)}. You provided: "
+            f"{separator}"
+        )
+
     contigs_by_sample = contigs.sample_dict()
     maps_by_sample = alignment_maps.file_dict()
 

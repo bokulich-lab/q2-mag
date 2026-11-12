@@ -12,20 +12,23 @@ import shutil
 import tempfile
 from uuid import uuid4
 
-from qiime2.util import duplicate
+from q2_types.feature_data import FeatureData
+from q2_types.feature_data_mag import MAG, Contig
 from q2_types.per_sample_sequences import (
     BAMDirFmt,
     ContigSequencesDirFmt,
     MultiFASTADirectoryFormat,
 )
+from qiime2.util import duplicate
+from rachis.core.type import Properties
 
+from q2_mag.metabat2.metabat2 import _generate_contig_map
+from q2_mag.semibin2.utils import _process_semibin2_arg
 from q2_mag.utils import (
     _align_samples_before_binning,
     _process_common_input_params,
     run_command,
 )
-from q2_mag.metabat2.metabat2 import _generate_contig_map
-from q2_mag.semibin2.utils import _process_semibin2_arg
 
 
 def _filter_alignment_maps(
@@ -85,11 +88,13 @@ def _process_sample(samp_name, samp_props, mode, common_args, result_loc):
 def _bin_partition_contigs_semibin2(
     contigs: ContigSequencesDirFmt,
     alignment_maps: BAMDirFmt,
-    mode: str,
+    binning_workflow: str,
     common_args: list,
 ) -> (MultiFASTADirectoryFormat, dict):
-    filtered_alignment_maps = _filter_alignment_maps(contigs, alignment_maps)
-    sample_set = _align_samples_before_binning(contigs, filtered_alignment_maps)
+    if binning_workflow == "single-sample":
+        alignment_maps = _filter_alignment_maps(contigs, alignment_maps)
+    sample_set = _align_samples_before_binning(contigs, alignment_maps)
+    mode = "multi_easy_bin" if binning_workflow == "multi-sample" else "single_easy_bin"
 
     bins = MultiFASTADirectoryFormat()
     for samp, props in sample_set.items():
@@ -108,7 +113,7 @@ def _bin_partition_contigs_semibin2(
 def _bin_contigs_semibin2(
     contigs: ContigSequencesDirFmt,
     alignment_maps: BAMDirFmt,
-    # mode: str,
+    binning_workflow: str,
     training_type: str | None = None,
     orf_finder: str = "fast-naive",
     environment: str = "global",
@@ -130,11 +135,8 @@ def _bin_contigs_semibin2(
     kwargs = {
         k: v
         for k, v in locals().items()
-        if k not in ["contigs", "alignment_maps", "mode", "training_type"]
+        if k not in ["contigs", "alignment_maps", "binning_workflow", "training_type"]
     }
-
-    # mode = "single_easy_bin" if mode == "single" else "multi_easy_bin"
-    mode = "single_easy_bin"
 
     common_args = _process_common_input_params(
         processing_func=_process_semibin2_arg, params=kwargs
@@ -143,7 +145,7 @@ def _bin_contigs_semibin2(
     return _bin_partition_contigs_semibin2(
         contigs=contigs,
         alignment_maps=alignment_maps,
-        mode=mode,
+        binning_workflow=binning_workflow,
         common_args=common_args,
     )
 
@@ -177,32 +179,44 @@ def bin_contigs_semibin2(
         if key not in {"ctx", "contigs", "alignment_maps", "num_partitions"}
     }
 
-    partition_contigs = ctx.get_action("types", "partition_contigs")
-    bin_partition = ctx.get_action("mag", "_bin_contigs_semibin2")
-    collate_mags = ctx.get_action("types", "collate_sample_data_mags")
-    collate_contig_maps = ctx.get_action("types", "collate_contig_maps")
-    filter_contigs = ctx.get_action("assembly", "filter_contigs")
+    binning_workflow = "single-sample"
+    if contigs.type <= FeatureData[Contig % Properties("coassembled")]:
+        binning_workflow = "co-assembly"
+    elif contigs.type <= FeatureData[Contig % Properties("pooled")]:
+        binning_workflow = "multi-sample"
 
-    (partitioned_contigs,) = partition_contigs(contigs, num_partitions)
-    mags = []
-    contig_maps = []
-    for contig_partition in partitioned_contigs.values():
-        partition_mags, partition_contig_map = bin_partition(
-            contig_partition, alignment_maps, **kwargs
+    bin_contigs = ctx.get_action("mag", "_bin_contigs_semibin2")
+
+    if binning_workflow == "single-sample":
+        partition_contigs = ctx.get_action("types", "partition_contigs")
+        collate_mags = ctx.get_action("types", "collate_sample_data_mags")
+        collate_contig_maps = ctx.get_action("types", "collate_contig_maps")
+
+        (partitioned_contigs,) = partition_contigs(contigs, num_partitions)
+
+        mags = []
+        contig_maps = []
+        for contig_partition in partitioned_contigs.values():
+            mags, contig_map = bin_contigs(
+                contig_partition, alignment_maps, binning_workflow, **kwargs
+            )
+            mags.append(mags)
+            contig_maps.append(contig_map)
+
+        (mags,) = collate_mags(mags)
+        (contig_map,) = collate_contig_maps(contig_maps)
+    else:
+        mags, contig_map = bin_contigs(
+            contigs, alignment_maps, binning_workflow, **kwargs
         )
-        mags.append(partition_mags)
-        contig_maps.append(partition_contig_map)
-
-    (collated_mags,) = collate_mags(mags)
-    (collated_contig_map,) = collate_contig_maps(contig_maps)
 
     binned_ids = {
-        contig
-        for contig_ids in collated_contig_map.view(dict).values()
-        for contig in contig_ids
+        contig for contig_ids in contig_map.view(dict).values() for contig in contig_ids
     }
+
+    filter_contigs = ctx.get_action("assembly", "filter_contigs")
     (unbinned_contigs,) = filter_contigs(
         contigs, on="contig", ids=sorted(binned_ids), exclude_ids=True
     )
 
-    return collated_mags, collated_contig_map, unbinned_contigs
+    return mags, contig_map, unbinned_contigs

@@ -662,41 +662,6 @@ semibin2_param_descriptions = {
 }
 
 plugin.methods.register_function(
-    function=q2_mag.semibin2._bin_contigs_semibin2,
-    inputs={
-        "contigs": SampleData[Contigs],
-        "alignment_maps": SampleData[AlignmentMap % Properties("sorted")],
-    },
-    parameters=semibin2_params,
-    outputs=[
-        ("mags", SampleData[MAGs]),
-        ("contig_map", FeatureMap[MAGtoContigs]),
-    ],
-    input_descriptions={
-        "contigs": "Contigs to be binned.",
-        "alignment_maps": "Reads-to-contig alignment maps.",
-    },
-    parameter_descriptions=semibin2_param_descriptions,
-    output_descriptions={
-        "mags": "The resulting MAGs.",
-        "contig_map": (
-            "Mapping of MAG identifiers to the contig identifiers "
-            "contained in each MAG."
-        ),
-    },
-    name="Bin contigs into MAGs using SemiBin2.",
-    description=(
-        "This method uses SemiBin2 to bin provided contigs into MAGs. Note that "
-        "SemiBin2 does not output what it considers ‘unbinned’ contigs"
-    ),
-    citations=[
-        citations["pan_deep_2022"],
-        citations["pan_semibin2_2023"],
-    ],
-)
-
-
-plugin.methods.register_function(
     function=q2_mag.das_tool.refine_bins_das_tool,
     inputs={
         "bins": List[SampleData[MAGs]],
@@ -771,17 +736,72 @@ plugin.methods.register_function(
     ],
 )
 
+T_contigs_in, T_mags_out, T_unbinned_out = TypeMap(
+    {
+        SampleData[Contigs]: (SampleData[MAGs], SampleData[Contigs]),
+        FeatureData[Contig % Properties("coassembled", "pooled")]: (
+            FeatureData[MAG],
+            FeatureData[Contig],
+        ),
+        FeatureData[Contig % Properties("pooled")]: (
+            SampleData[MAGs],
+            SampleData[Contigs],
+        ),
+        FeatureData[Contig % Properties("coassembled")]: (
+            FeatureData[MAG],
+            FeatureData[Contig],
+        ),
+    }
+)
+plugin.methods.register_function(
+    function=q2_mag.semibin2._bin_contigs_semibin2,
+    inputs={
+        "contigs": T_contigs_in,
+        "alignment_maps": SampleData[AlignmentMap % Properties("sorted")],
+    },
+    parameters={
+        **semibin2_params,
+        "binning_workflow": Str
+        % Choices(["single-sample", "multi-sample", "co-assembly"]),
+    },
+    outputs=[
+        ("mags", T_mags_out),
+        ("contig_map", FeatureMap[MAGtoContigs]),
+    ],
+    input_descriptions={
+        "contigs": "Contigs to be binned.",
+        "alignment_maps": "Reads-to-contig alignment maps.",
+    },
+    parameter_descriptions=semibin2_param_descriptions,
+    output_descriptions={
+        "mags": "The resulting MAGs.",
+        "contig_map": (
+            "Mapping of MAG identifiers to the contig identifiers "
+            "contained in each MAG."
+        ),
+    },
+    name="Bin contigs into MAGs using SemiBin2.",
+    description=(
+        "This method uses SemiBin2 to bin provided contigs into MAGs. Note that "
+        "SemiBin2 does not output what it considers ‘unbinned’ contigs"
+    ),
+    citations=[
+        citations["pan_deep_2022"],
+        citations["pan_semibin2_2023"],
+    ],
+)
+
 plugin.pipelines.register_function(
     function=q2_mag.semibin2.bin_contigs_semibin2,
     inputs={
-        "contigs": SampleData[Contigs],
+        "contigs": T_contigs_in,
         "alignment_maps": SampleData[AlignmentMap % Properties("sorted")],
     },
     parameters={**semibin2_params, **partition_params},
     outputs=[
-        ("mags", SampleData[MAGs]),
+        ("mags", T_mags_out),
         ("contig_map", FeatureMap[MAGtoContigs]),
-        ("unbinned_contigs", SampleData[Contigs]),
+        ("unbinned_contigs", T_unbinned_out),
     ],
     input_descriptions={
         "contigs": "Contigs to be binned.",
