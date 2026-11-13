@@ -12,6 +12,10 @@ import shutil
 import tempfile
 from uuid import uuid4
 
+from q2_types.per_sample_sequences import (
+    Contigs,
+)
+from q2_types.sample_data import SampleData
 from q2_types.feature_data import FeatureData
 from q2_types.feature_data_mag import MAG, Contig
 from q2_types.per_sample_sequences import (
@@ -51,13 +55,18 @@ def _run_semibin2(samp_name, samp_props, loc, mode, common_args):
     bins_dp = os.path.join(loc, samp_name)
     bins_prefix = os.path.join(bins_dp, "bin")
     os.makedirs(bins_dp)
+    bam_paths = samp_props["map"]
+
+    if isinstance(bam_paths, str):
+        bam_paths = [bam_paths]
+
     cmd = [
         "SemiBin2",
         mode,
         "--input-fasta",
         samp_props["contigs"],
         "--input-bam",
-        samp_props["map"],
+        *bam_paths,
         "--output",
         bins_prefix,
         "--compression",
@@ -93,7 +102,12 @@ def _bin_partition_contigs_semibin2(
 ) -> (MultiFASTADirectoryFormat, dict):
     if binning_workflow == "single-sample":
         alignment_maps = _filter_alignment_maps(contigs, alignment_maps)
-    sample_set = _align_samples_before_binning(contigs, alignment_maps)
+    sample_set, separator = _align_samples_before_binning(
+        contigs=contigs,
+        alignment_maps=alignment_maps,
+        binning_workflow=binning_workflow,
+    )
+    print(separator)
     mode = "multi_easy_bin" if binning_workflow == "multi-sample" else "single_easy_bin"
 
     bins = MultiFASTADirectoryFormat()
@@ -138,6 +152,9 @@ def _bin_contigs_semibin2(
         if k not in ["contigs", "alignment_maps", "binning_workflow", "training_type"]
     }
 
+    if binning_workflow == "multi-sample":
+        kwargs.pop("environment")  # Argument unsupported in multi_easy_bin
+
     common_args = _process_common_input_params(
         processing_func=_process_semibin2_arg, params=kwargs
     )
@@ -179,11 +196,14 @@ def bin_contigs_semibin2(
         if key not in {"ctx", "contigs", "alignment_maps", "num_partitions"}
     }
 
-    binning_workflow = "single-sample"
-    if contigs.type <= FeatureData[Contig % Properties("coassembled")]:
+    if contigs.type <= SampleData[Contigs]:
+        binning_workflow = "single-sample"
+    elif contigs.type <= FeatureData[Contig % Properties("coassembled")]:
         binning_workflow = "co-assembly"
     elif contigs.type <= FeatureData[Contig % Properties("pooled")]:
         binning_workflow = "multi-sample"
+    else:
+        raise NotImplementedError()
 
     bin_contigs = ctx.get_action("mag", "_bin_contigs_semibin2")
 

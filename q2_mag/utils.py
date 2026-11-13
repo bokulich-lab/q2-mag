@@ -12,6 +12,7 @@ from typing import List, Union
 import pandas as pd
 import skbio
 from q2_assembly._action_params import ALLOWED_SEPARATORS
+from q2_assembly._utils import _split_contig_id
 from q2_types.feature_data import DNASequencesDirectoryFormat
 
 from q2_types.feature_data_mag import MAGSequencesDirFmt
@@ -87,49 +88,133 @@ def colorify(string: str):
     return "%s%s%s" % ("\033[1;32m", string, "\033[0m")
 
 
-def _get_sample_ids(contigs: ContigSequencesDirFmt) -> set[str]:
-    """Returns a list of sample IDs found in the contigs provided."""
-    return None
+def _get_separator(
+    header_id: str,
+    sample_id: str,
+    separator: str | None = None,
+) -> str:
+    """Extract the separator separating the sample ID from the rest of the header. The
+    separator is a single character following the sample ID:
+
+        <sample_id><separator><contig_id>
+
+    Args:
+        header_id (str): Full header ID.
+        sample_id (str): Sample ID. Should be a subset of the full header ID.
+        separator (str, optional): Expected separator character (if any).
+            Defaults to "".
+
+    Raises:
+        AssertionError: If no separator follows the sample ID, the extracted
+            character is not a valid separator, or it differs from the expected
+            (provided) separator.
+
+    Returns:
+        str: The separator character following the sample ID.
+    """
+    if not separator:
+        if len(header_id) < len(sample_id):
+            raise AssertionError(
+                "Found sample ID but no separator found in contig header. "
+            )
+
+        separator = header_id[len(sample_id)]
+
+        if not separator in ALLOWED_SEPARATORS:
+            raise AssertionError(
+                f"{separator} is not a valid separator. Must be one of: "
+                f"Valid separators are: {", ".join(ALLOWED_SEPARATORS)}"
+            )
+    elif header_id[len(sample_id)] != separator:
+        raise AssertionError(
+            "Found sample ID but no separator found in contig header. "
+            f"Valid separators are: {", ".join(ALLOWED_SEPARATORS)}"
+        )
+
+    return separator
+
+
+def _get_sample_ids(
+    contigs: ContigSequencesDirFmt, expected_samples: list[str]
+) -> tuple[set[str], str]:
+    """Check that the expected sample IDs exists within the provided contig headers."""
+    fasta_fps = contigs.sample_dict().values()
+    headers = []
+    n_samples = len(expected_samples)
+    samples_found = set()
+    separator = ""
+
+    for fasta_fp in fasta_fps:
+        for contig in skbio.io.read(fasta_fp, format="fasta"):
+            header_id = contig.metadata["id"]
+            headers.append(header_id)
+
+            # We expected Sample IDs to be ordered. We therefore, use the last matching
+            # sample ID instead of iterating over a fixed list.
+            i = 0
+            j = 0
+
+            while i != n_samples:
+                current_sample = expected_samples[j]
+
+                if header_id.startswith(current_sample):
+                    separator = _get_separator(header_id, current_sample, separator)
+                    if current_sample not in samples_found:
+                        samples_found.add(current_sample)
+                else:
+                    j += 1 if j <= n_samples else 0
+                i += 1
+
+    return (samples_found, separator)
 
 
 def _align_samples_before_binning(
     contigs: ContigSequencesDirFmt,
     alignment_maps: BAMDirFmt,
     binning_workflow: str = "single-sample",  # Default provides backwards compatability
-    separator: str = ":",
 ) -> dict[str, dict[str, str]]:
     """Validate that sample IDs match and pair each sample's FASTA and BAM paths."""
-    valid_workflows = ("single-sample", "multi-sample", "co-assembly")
-    if binning_workflow not in valid_workflows:
+    if binning_workflow not in ("single-sample", "multi-sample", "co-assembly"):
         raise ValueError(
             "Binning workflow must be one of single-sample, multi-sample, or "
             f"co-assembly. You provided: {binning_workflow}."
         )
 
-    if separator not in ALLOWED_SEPARATORS:
-        raise ValueError(
-            f"Separator must be one of {",".join(ALLOWED_SEPARATORS)}. You provided: "
-            f"{separator}"
-        )
-
     contigs_by_sample = contigs.sample_dict()
     maps_by_sample = alignment_maps.file_dict()
-
-    fasta_samples = contigs_by_sample.keys()
     bam_samples = maps_by_sample.keys()
 
-    if fasta_samples != bam_samples:
-        raise Exception(
-            "Contigs and alignment maps should belong to the same sample set. "
-            f'You provided contigs for samples: {",".join(fasta_samples)} '
-            f'but maps for samples: {",".join(bam_samples)}. Please check '
-            "your inputs and try again."
-        )
+    # TODO: single-sample binning doesn't expect a separator
+    if binning_workflow in ("multi-sample", "co-assembly"):
+        fasta_samples, separator = _get_sample_ids(contigs, list(bam_samples))
 
-    return {
-        sample: {"contigs": contig_path, "map": maps_by_sample[sample]}
-        for sample, contig_path in contigs_by_sample.items()
-    }
+        return (
+            {
+                "pooled": {
+                    "contigs": next(iter(contigs_by_sample.values())),
+                    "map": list(maps_by_sample.values()),
+                }
+            },
+            separator,
+        )
+    else:
+        fasta_samples = contigs_by_sample.keys()
+
+        if fasta_samples != bam_samples:
+            raise Exception(
+                "Contigs and alignment maps should belong to the same sample set. "
+                f'You provided contigs for samples: {", ".join(fasta_samples)} '
+                f'but maps for samples: {", ".join(bam_samples)}. Please check '
+                "your inputs and try again."
+            )
+
+        return (
+            {
+                sample: {"contigs": contig_path, "map": maps_by_sample[sample]}
+                for sample, contig_path in contigs_by_sample.items()
+            },
+            separator,
+        )
 
 
 def get_feature_lengths(
