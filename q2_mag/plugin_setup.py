@@ -9,6 +9,7 @@
 import importlib
 
 from rachis.plugin import Metadata
+from q2_mag.busco.database import DATASETS_VERSIONS
 from q2_mag.busco.types import (
     BUSCOResultsFormat,
     BUSCOResultsDirectoryFormat,
@@ -372,12 +373,19 @@ plugin.methods.register_function(
     output_descriptions={"db": "BUSCO database for the specified lineages."},
     parameters={
         "lineages": List[Str],
+        "datasets_version": Str % Choices(DATASETS_VERSIONS),
     },
     parameter_descriptions={
         "lineages": (
             "Lineages to be included in the database. Can be any "
             "valid BUSCO lineage or any of the following: 'all' "
             "(for all lineages), 'prokaryota', 'eukaryota', 'virus'."
+        ),
+        "datasets_version": (
+            "OrthoDB version of the datasets to be fetched when 'all', "
+            "'prokaryota' or 'eukaryota' is requested. Does not apply to "
+            "'virus' or to individually named lineages, which already "
+            "include their version (e.g. 'bacteria_odb12')."
         ),
     },
     name="Download BUSCO database.",

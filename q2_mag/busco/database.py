@@ -12,6 +12,18 @@ from typing import List
 from q2_mag.utils import colorify, run_command
 from q2_mag.busco.types import BuscoDatabaseDirFmt
 
+# OrthoDB dataset versions that can be requested from BUSCO
+# Default is set explicitly so that any change to the datasets
+# being fetched is intentional
+DATASETS_VERSIONS = ["odb10", "odb12", "odb12.2"]
+DEFAULT_DATASETS_VERSION = "odb12.2"
+
+VERSIONED_SELECTIONS = {
+    "all": "all_{version}",
+    "prokaryota": "all_prokaryota_{version}",
+    "eukaryota": "all_eukaryota_{version}",
+}
+
 
 def _process_lineages(lineages):
     """Process and validate BUSCO lineage selections.
@@ -56,6 +68,48 @@ def _process_lineages(lineages):
     return lineages
 
 
+def _resolve_download_targets(lineages, datasets_version):
+    """Pin unversioned BUSCO lineage selections to a dataset version.
+
+    BUSCO resolves 'all', 'prokaryota' and 'eukaryota' using a dataset
+    version that is hardcoded per BUSCO release. To avoid the fetched datasets
+    silently changing with the installed BUSCO version, those selections are
+    replaced with their explicitly versioned equivalents (e.g. 'all_odb12').
+    The 'virus' selection and individually named lineages are not affected.
+
+    Parameters
+    ----------
+    lineages : list
+        List of processed lineage names (see `_process_lineages`).
+    datasets_version : str
+        OrthoDB dataset version to be used, e.g. 'odb12'.
+
+    Returns
+    -------
+    list
+        List of download targets to be passed to `busco --download`.
+
+    Raises
+    ------
+    ValueError
+        If the dataset version is not supported.
+    """
+    if datasets_version not in DATASETS_VERSIONS:
+        raise ValueError(
+            f"Unsupported datasets version: '{datasets_version}'. "
+            f"Supported versions are: {', '.join(DATASETS_VERSIONS)}."
+        )
+
+    return [
+        (
+            VERSIONED_SELECTIONS[lineage].format(version=datasets_version)
+            if lineage in VERSIONED_SELECTIONS
+            else lineage
+        )
+        for lineage in lineages
+    ]
+
+
 def delete_symlinks(root_dir):
     """Delete all symbolic links in a directory tree.
 
@@ -74,13 +128,17 @@ def delete_symlinks(root_dir):
                 os.unlink(os.path.join(dirpath, _file))
 
 
-def fetch_busco_db(lineages: List[str] = None) -> BuscoDatabaseDirFmt:
+def fetch_busco_db(
+    lineages: List[str] = None,
+    datasets_version: str = DEFAULT_DATASETS_VERSION,
+) -> BuscoDatabaseDirFmt:
     busco_db = BuscoDatabaseDirFmt(path=None, mode="w")
 
     lineages = _process_lineages(lineages)
+    targets = _resolve_download_targets(lineages, datasets_version)
 
-    print(colorify(f"Fetching lineages: {', '.join(lineages)}."))
-    cmd = ["busco", "--download_path", str(busco_db), "--download", *lineages]
+    print(colorify(f"Fetching lineages: {', '.join(targets)}."))
+    cmd = ["busco", "--download_path", str(busco_db), "--download", *targets]
     try:
         run_command(cmd)
     except subprocess.CalledProcessError as e:
