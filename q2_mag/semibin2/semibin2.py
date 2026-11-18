@@ -19,6 +19,7 @@ from q2_types.sample_data import SampleData
 from q2_types.feature_data import FeatureData
 from q2_types.feature_data_mag import Contig
 from q2_types.per_sample_sequences import (
+    AlignmentMap,
     BAMDirFmt,
     ContigSequencesDirFmt,
     MultiFASTADirectoryFormat,
@@ -194,8 +195,26 @@ def bin_contigs_semibin2(
     if contigs.type <= SampleData[Contigs]:
         binning_workflow = "single-sample"
     elif contigs.type <= FeatureData[Contig % Properties("coassembled")]:
+        if (
+            not alignment_maps.type
+            <= SampleData[AlignmentMap % Properties("sorted", "pooled")]
+        ):
+            raise ValueError(
+                "You provided pooled contigs but alignment maps of the type "
+                f"{alignment_maps.type}. Expected maps of the type "
+                "SampleData[AlignmentMap % Properties('sorted', 'pooled')]"
+            )
         binning_workflow = "co-assembly"
     elif contigs.type <= FeatureData[Contig % Properties("pooled")]:
+        if (
+            not alignment_maps.type
+            <= SampleData[AlignmentMap % Properties("sorted", "pooled")]
+        ):
+            raise ValueError(
+                "You provided co-assembled contigs but alignment maps of the type "
+                f"{alignment_maps.type}. Expected maps of the type "
+                "SampleData[AlignmentMap % Properties('sorted', 'coassembled')]"
+            )
         binning_workflow = "multi-sample"
     else:
         raise NotImplementedError()
