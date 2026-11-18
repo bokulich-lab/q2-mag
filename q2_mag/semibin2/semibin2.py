@@ -17,7 +17,7 @@ from q2_types.per_sample_sequences import (
 )
 from q2_types.sample_data import SampleData
 from q2_types.feature_data import FeatureData
-from q2_types.feature_data_mag import MAG, Contig
+from q2_types.feature_data_mag import Contig
 from q2_types.per_sample_sequences import (
     BAMDirFmt,
     ContigSequencesDirFmt,
@@ -55,10 +55,6 @@ def _run_semibin2(samp_name, samp_props, loc, mode, common_args):
     bins_dp = os.path.join(loc, samp_name)
     bins_prefix = os.path.join(bins_dp, "bin")
     os.makedirs(bins_dp)
-    bam_paths = samp_props["map"]
-
-    if isinstance(bam_paths, str):
-        bam_paths = [bam_paths]
 
     cmd = [
         "SemiBin2",
@@ -66,7 +62,7 @@ def _run_semibin2(samp_name, samp_props, loc, mode, common_args):
         "--input-fasta",
         samp_props["contigs"],
         "--input-bam",
-        *bam_paths,
+        *samp_props["map"],
         "--output",
         bins_prefix,
         "--compression",
@@ -107,7 +103,6 @@ def _bin_partition_contigs_semibin2(
         alignment_maps=alignment_maps,
         binning_workflow=binning_workflow,
     )
-    print(separator)
     mode = "multi_easy_bin" if binning_workflow == "multi-sample" else "single_easy_bin"
 
     bins = MultiFASTADirectoryFormat()

@@ -769,7 +769,10 @@ plugin.methods.register_function(
         ("contig_map", FeatureMap[MAGtoContigs]),
     ],
     input_descriptions={
-        "contigs": "Contigs to be binned.",
+        "contigs": (
+            "Contigs to be binned. Either resulting from a per-sample assembly, a "
+            "co-assembly, or a pooled assembly. Exactly one artifact may be provided."
+        ),
         "alignment_maps": "Reads-to-contig alignment maps.",
     },
     parameter_descriptions=semibin2_param_descriptions,
