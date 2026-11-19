@@ -6,8 +6,11 @@
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
 import os
-from q2_mag.busco.database import (fetch_busco_db, delete_symlinks,
-                                   _resolve_download_targets)
+from q2_mag.busco.database import (
+    fetch_busco_db,
+    delete_symlinks,
+    _resolve_download_targets,
+)
 from unittest.mock import patch
 from qiime2.plugin.testing import TestPluginBase
 
@@ -37,8 +40,7 @@ class TestFetchBUSCO(TestPluginBase):
     @patch("subprocess.run")
     def test_fetch_busco_db_all(self, subp_run):
         busco_db = fetch_busco_db(lineages=["all"])
-        cmd = ["busco", "--download_path", str(busco_db),
-               "--download", "all_odb12.2"]
+        cmd = ["busco", "--download_path", str(busco_db), "--download", "all_odb12.2"]
         subp_run.assert_called_once_with(cmd, check=True)
 
     @patch("subprocess.run")
@@ -57,8 +59,7 @@ class TestFetchBUSCO(TestPluginBase):
     @patch("subprocess.run")
     def test_fetch_busco_db_lineages_with_all(self, subp_run):
         busco_db = fetch_busco_db(lineages=["lineage1", "lineage2", "all"])
-        cmd = ["busco", "--download_path", str(busco_db),
-               "--download", "all_odb12.2"]
+        cmd = ["busco", "--download_path", str(busco_db), "--download", "all_odb12.2"]
         subp_run.assert_called_once_with(cmd, check=True)
 
     @patch("subprocess.run")
@@ -86,8 +87,7 @@ class TestFetchBUSCO(TestPluginBase):
         for version in ["odb10", "odb12", "odb12.2"]:
             with self.subTest(version=version):
                 subp_run.reset_mock()
-                busco_db = fetch_busco_db(lineages=["all"],
-                                          datasets_version=version)
+                busco_db = fetch_busco_db(lineages=["all"], datasets_version=version)
                 cmd = [
                     "busco",
                     "--download_path",
@@ -100,8 +100,7 @@ class TestFetchBUSCO(TestPluginBase):
     @patch("subprocess.run")
     def test_fetch_busco_db_domains_datasets_version(self, subp_run):
         busco_db = fetch_busco_db(
-            lineages=["prokaryota", "eukaryota", "virus"],
-            datasets_version="odb12.2"
+            lineages=["prokaryota", "eukaryota", "virus"], datasets_version="odb12.2"
         )
         cmd = [
             "busco",
@@ -115,11 +114,9 @@ class TestFetchBUSCO(TestPluginBase):
         subp_run.assert_called_once_with(cmd, check=True)
 
     @patch("subprocess.run")
-    def test_fetch_busco_db_named_lineages_ignore_datasets_version(self,
-                                                                   subp_run):
+    def test_fetch_busco_db_named_lineages_ignore_datasets_version(self, subp_run):
         busco_db = fetch_busco_db(
-            lineages=["bacteria_odb10", "archaea_odb12"],
-            datasets_version="odb12.2"
+            lineages=["bacteria_odb10", "archaea_odb12"], datasets_version="odb12.2"
         )
         cmd = [
             "busco",
@@ -133,16 +130,14 @@ class TestFetchBUSCO(TestPluginBase):
 
     @patch("subprocess.run")
     def test_fetch_busco_db_invalid_datasets_version(self, subp_run):
-        with self.assertRaisesRegex(ValueError,
-                                    "Unsupported datasets version: 'odb9'"):
+        with self.assertRaisesRegex(ValueError, "Unsupported datasets version: 'odb9'"):
             fetch_busco_db(lineages=["all"], datasets_version="odb9")
         subp_run.assert_not_called()
 
     def test_resolve_download_targets_default_selections_are_versioned(self):
         # None of the unversioned selections should ever be passed to BUSCO
         # as-is, since BUSCO would resolve them using its own default version.
-        obs = _resolve_download_targets(["all", "prokaryota", "eukaryota"],
-                                        "odb12")
+        obs = _resolve_download_targets(["all", "prokaryota", "eukaryota"], "odb12")
         exp = ["all_odb12", "all_prokaryota_odb12", "all_eukaryota_odb12"]
         self.assertListEqual(obs, exp)
 
