@@ -6,27 +6,28 @@
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
 import glob
-
-import shutil
-
 import os
+import shutil
 import tempfile
 import unittest
 import uuid
 from pathlib import Path
-from q2_types.per_sample_sequences import ContigSequencesDirFmt, BAMDirFmt
-from q2_types.per_sample_sequences import MultiFASTADirectoryFormat
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, call, patch
 
+from q2_types.per_sample_sequences import (
+    BAMDirFmt,
+    ContigSequencesDirFmt,
+    MultiFASTADirectoryFormat,
+)
 from qiime2.plugin.testing import TestPluginBase
 
 from q2_mag.semibin2.semibin2 import (
-    bin_contigs_semibin2,
     _bin_contigs_semibin2,
     _bin_partition_contigs_semibin2,
     _filter_alignment_maps,
-    _run_semibin2,
     _process_sample,
+    _run_semibin2,
+    bin_contigs_semibin2,
 )
 
 
