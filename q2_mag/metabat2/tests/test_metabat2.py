@@ -32,7 +32,7 @@ class TestMetabat2(TestPluginBase):
 
     @patch("subprocess.run")
     def test_estimate_depth_ok(self, p1):
-        fake_props = {"map": "/some/where/map.bam", "fake_key": "abc"}
+        fake_props = {"map": ["/some/where/map.bam"], "fake_key": "abc"}
 
         obs_fp = _estimate_depth("samp1", fake_props, "/new/location")
         exp_fp = "/new/location/samp1_depth.txt"
@@ -43,14 +43,35 @@ class TestMetabat2(TestPluginBase):
                 "jgi_summarize_bam_contig_depths",
                 "--outputDepth",
                 exp_fp,
-                fake_props["map"],
+                *fake_props["map"],
+            ],
+            check=True,
+        )
+
+    @patch("subprocess.run")
+    def test_estimate_depth_multiple_maps(self, p1):
+        fake_props = {
+            "map": [
+                self.get_data_path("maps/samp1_alignment.bam"),
+                self.get_data_path("maps/samp2_alignment.bam"),
+            ]
+        }
+
+        obs_fp = _estimate_depth("samp1", fake_props, "/new/location")
+
+        p1.assert_called_once_with(
+            [
+                "jgi_summarize_bam_contig_depths",
+                "--outputDepth",
+                obs_fp,
+                *fake_props["map"],
             ],
             check=True,
         )
 
     @patch("subprocess.run")
     def test_run_metabat2_ok(self, p1):
-        fake_props = {"map": "/some/where/map.bam", "contigs": "/a/b/co.fa"}
+        fake_props = {"map": ["/some/where/map.bam"], "contigs": "/a/b/co.fa"}
         fake_args = ["--verbose", "--pTNF", "85", "--minContig", "2500"]
 
         with tempfile.TemporaryDirectory() as fake_loc:
@@ -80,7 +101,7 @@ class TestMetabat2(TestPluginBase):
     @patch("q2_mag.metabat2.metabat2._run_metabat2")
     def test_process_sample(self, p1, p2, p3, p4):
         fake_props = {
-            "map": "some/where/samp1_alignment.bam",
+            "map": ["some/where/samp1_alignment.bam"],
             "contigs": "some/where/samp1_contigs.fasta",
         }
         fake_args = ["--verbose", "--minContig", "1500", "--minClsSize", "10000"]
@@ -175,7 +196,7 @@ class TestMetabat2(TestPluginBase):
                     "samp1",
                     {
                         "contigs": self.get_data_path("/contigs/samp1_contigs.fa"),
-                        "map": self.get_data_path("/maps/samp1_alignment.bam"),
+                        "map": [self.get_data_path("/maps/samp1_alignment.bam")],
                     },
                     args,
                     str(mock_bins),
@@ -185,7 +206,7 @@ class TestMetabat2(TestPluginBase):
                     "samp2",
                     {
                         "contigs": self.get_data_path("/contigs/samp2_contigs.fa"),
-                        "map": self.get_data_path("/maps/samp2_alignment.bam"),
+                        "map": [self.get_data_path("/maps/samp2_alignment.bam")],
                     },
                     args,
                     str(mock_bins),

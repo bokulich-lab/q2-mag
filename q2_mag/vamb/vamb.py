@@ -43,10 +43,8 @@ def _run_vamb(
     # VAMB expects a directory of BAM files and not a single file
     bamdir = os.path.join(loc, f"{samp_name}_bams")
     os.makedirs(bamdir)
-    os.symlink(
-        samp_props["map"],
-        os.path.join(bamdir, os.path.basename(samp_props["map"])),
-    )
+    for bam_fp in samp_props["map"]:
+        os.symlink(bam_fp, os.path.join(bamdir, os.path.basename(bam_fp)))
 
     cmd = [
         "vamb",
@@ -102,13 +100,13 @@ def _process_sample(
 
 
 def _assert_reference_integrity(
-    sample_set: dict[str, dict[str, str]], contig_key: str, map_key: str
+    sample_set: dict[str, dict[str, list[str]]], contig_key: str, map_key: str
 ) -> None:
     """Verify that each sample's FASTA and BAM references are identical.
 
     Parameters
     ----------
-    sample_set : dict[str, dict[str, str]]
+    sample_set : dict[str, dict[str, list[str]]]
         Mapping of sample identifiers to their associated file paths.
     contig_key : str
         Key for a sample's contig FASTA path.
@@ -125,7 +123,7 @@ def _assert_reference_integrity(
     for samp, props in sample_set.items():
         with (
             pysam.FastaFile(props[contig_key]) as fasta,
-            pysam.AlignmentFile(props[map_key], "r") as bam,
+            pysam.AlignmentFile(props[map_key][0], "r") as bam,
         ):
             fasta_records = tuple(zip(fasta.references, fasta.lengths))
             bam_records = tuple(zip(bam.references, bam.lengths))
@@ -258,7 +256,9 @@ def _bin_contigs_vamb(
     multi_split: bool,
     common_args: list,
 ) -> (MultiFASTADirectoryFormat, dict):
-    sample_set = _align_samples_before_binning(contigs, alignment_maps)
+    sample_set, _ = _align_samples_before_binning(
+        contigs, alignment_maps, "single-sample"
+    )
     _assert_reference_integrity(sample_set, "contigs", "map")
 
     binner = "default"

@@ -231,10 +231,10 @@ def bin_contigs_semibin2(
         mags = []
         contig_maps = []
         for contig_partition in partitioned_contigs.values():
-            mags, contig_map = bin_contigs(
+            partition_mags, contig_map = bin_contigs(
                 contig_partition, alignment_maps, binning_workflow, **kwargs
             )
-            mags.append(mags)
+            mags.append(partition_mags)
             contig_maps.append(contig_map)
 
         (mags,) = collate_mags(mags)
