@@ -19,6 +19,7 @@ from q2_types.per_sample_sequences import (
     ContigSequencesDirFmt,
     MultiFASTADirectoryFormat,
 )
+from qiime2 import Artifact
 from qiime2.plugin.testing import TestPluginBase
 
 from q2_mag.semibin2.semibin2 import (
@@ -56,7 +57,7 @@ class TestSemibin2(TestPluginBase):
 
     @patch("subprocess.run")
     def test_run_semibin2_ok(self, p1):
-        fake_props = {"map": "/some/where/map.bam", "contigs": "/a/b/co.fa"}
+        fake_props = {"map": ["/some/where/map.bam"], "contigs": "/a/b/co.fa"}
         fake_args = [
             "--epochs",
             "16",
@@ -78,7 +79,7 @@ class TestSemibin2(TestPluginBase):
                 "--input-fasta",
                 fake_props["contigs"],
                 "--input-bam",
-                fake_props["map"],
+                *fake_props["map"],
                 "--output",
                 os.path.join(fake_loc, "samp1", "bin"),
                 "--compression",
@@ -162,7 +163,7 @@ class TestSemibin2(TestPluginBase):
         p2.return_value = mock_bins
 
         obs_bins, obs_map = _bin_partition_contigs_semibin2(
-            contigs, maps, "single_easy_bin", args
+            contigs, maps, "single-sample", args
         )
 
         filter_alignment_maps.assert_called_once_with(contigs, maps)
@@ -173,7 +174,7 @@ class TestSemibin2(TestPluginBase):
                     "samp1",
                     {
                         "contigs": self.get_data_path("/contigs/samp1_contigs.fa"),
-                        "map": self.get_data_path("/maps/samp1_alignment.bam"),
+                        "map": [self.get_data_path("/maps/samp1_alignment.bam")],
                     },
                     "single_easy_bin",
                     args,
@@ -183,7 +184,7 @@ class TestSemibin2(TestPluginBase):
                     "samp2",
                     {
                         "contigs": self.get_data_path("/contigs/samp2_contigs.fa"),
-                        "map": self.get_data_path("/maps/samp2_alignment.bam"),
+                        "map": [self.get_data_path("/maps/samp2_alignment.bam")],
                     },
                     "single_easy_bin",
                     args,
@@ -239,7 +240,7 @@ class TestSemibin2(TestPluginBase):
         p2.return_value = mock_bins
 
         with self.assertRaisesRegex(ValueError, "No MAGs were formed"):
-            _bin_partition_contigs_semibin2(contigs, maps, "single_easy_bin", args)
+            _bin_partition_contigs_semibin2(contigs, maps, "single-sample", args)
 
     @patch("q2_mag.semibin2.semibin2._bin_partition_contigs_semibin2")
     @patch("q2_mag.semibin2.semibin2._process_common_input_params")
@@ -254,6 +255,7 @@ class TestSemibin2(TestPluginBase):
             contigs=contigs,
             alignment_maps=bams,
             epochs=10,
+            binning_workflow="single-sample",
         )
 
         p1.assert_called_once()
@@ -261,14 +263,16 @@ class TestSemibin2(TestPluginBase):
         p2.assert_called_once_with(
             contigs=contigs,
             alignment_maps=bams,
-            mode="single_easy_bin",
+            binning_workflow="single-sample",
             common_args=["--epochs", "16"],
         )
 
         assert result == ("bins", {"contigA": "bin1"})
 
     def test_bin_contigs_semibin2_pipeline(self):
-        contigs = ContigSequencesDirFmt(self.get_data_path("contigs"), mode="r")
+        contigs = Artifact.import_data(
+            "SampleData[Contigs]", self.get_data_path("contigs")
+        )
         alignment_maps = BAMDirFmt(self.get_data_path("maps"), mode="r")
         partitions = MagicMock()
         partitions.values.return_value = ["partition1", "partition2"]
@@ -329,8 +333,8 @@ class TestSemibin2(TestPluginBase):
         }
         self.assertListEqual(
             [
-                call("partition1", alignment_maps, **worker_params),
-                call("partition2", alignment_maps, **worker_params),
+                call("partition1", alignment_maps, "single-sample", **worker_params),
+                call("partition2", alignment_maps, "single-sample", **worker_params),
             ],
             bin_partition.call_args_list,
         )
@@ -345,6 +349,56 @@ class TestSemibin2(TestPluginBase):
         self.assertTupleEqual(
             ("collated_mags", collated_contig_map, "unbinned_contigs"), obs
         )
+
+    def test_bin_contigs_semibin2_coassembly_invalid_maps(self):
+        self.package = "q2_mag.tests"
+        contigs = Artifact.import_data(
+            "FeatureData[Contig % Properties('coassembled')]",
+            self.get_data_path("coassembled-contigs"),
+        )
+        alignment_maps = Artifact.import_data(
+            "SampleData[AlignmentMap % Properties('sorted')]",
+            self.get_data_path("coassembled-maps"),
+        )
+
+        with self.assertRaisesRegex(ValueError, "Expected maps of the type"):
+            bin_contigs_semibin2(
+                ctx=None,
+                contigs=contigs,
+                alignment_maps=alignment_maps,
+            )
+
+    def test_bin_contigs_semibin2_multi_sample_invalid_maps(self):
+        self.package = "q2_mag.tests"
+        contigs = Artifact.import_data(
+            "FeatureData[Contig % Properties('pooled')]",
+            self.get_data_path("pooled-contigs/colon-separator"),
+        )
+        alignment_maps = Artifact.import_data(
+            "SampleData[AlignmentMap % Properties('sorted')]",
+            self.get_data_path("pooled-maps/colon-separator"),
+        )
+
+        with self.assertRaisesRegex(ValueError, "Expected maps of the type"):
+            bin_contigs_semibin2(
+                ctx=None,
+                contigs=contigs,
+                alignment_maps=alignment_maps,
+            )
+
+    def test_bin_contigs_semibin2_unsupported_contigs(self):
+        self.package = "q2_mag.tests"
+        contigs = Artifact.import_data(
+            "FeatureData[Sequence]",
+            self.get_data_path("sequences/dna-sequences.fasta"),
+        )
+
+        with self.assertRaises(NotImplementedError):
+            bin_contigs_semibin2(
+                ctx=None,
+                contigs=contigs,
+                alignment_maps=None,
+            )
 
 
 if __name__ == "__main__":
