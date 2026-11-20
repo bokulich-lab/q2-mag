@@ -105,6 +105,8 @@ def _bin_partition_contigs_semibin2(
         binning_workflow=binning_workflow,
     )
     mode = "multi_easy_bin" if binning_workflow == "multi-sample" else "single_easy_bin"
+    if binning_workflow == "multi-sample":
+        common_args = [*common_args, "--separator", separator]
 
     bins = MultiFASTADirectoryFormat()
     for samp, props in sample_set.items():
