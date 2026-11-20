@@ -76,6 +76,7 @@ plugin = Plugin(
     citations=[],
 )
 
+
 importlib.import_module("q2_mag.metabat2")
 importlib.import_module("q2_mag.das_tool")
 
@@ -840,3 +841,4 @@ plugin.register_semantic_type_to_format(
 )
 plugin.register_semantic_type_to_format(ReferenceDB[BUSCO], BuscoDatabaseDirFmt)
 importlib.import_module("q2_mag.busco.types._transformer")
+importlib.import_module("q2_mag.semibin2.types._transformer")

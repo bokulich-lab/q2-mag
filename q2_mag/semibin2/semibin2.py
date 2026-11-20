@@ -16,7 +16,7 @@ from q2_types.per_sample_sequences import (
     Contigs,
 )
 from q2_types.sample_data import SampleData
-from q2_types.feature_data import FeatureData, MAGSequencesDirFmt
+from q2_types.feature_data import FeatureData
 from q2_types.feature_data_mag import Contig
 from q2_types.per_sample_sequences import (
     AlignmentMap,
@@ -108,11 +108,7 @@ def _bin_partition_contigs_semibin2(
     if binning_workflow == "multi-sample":
         common_args = [*common_args, "--separator", separator]
 
-    bins = (
-        MAGSequencesDirFmt()
-        if binning_workflow == "co-assembly"
-        else MultiFASTADirectoryFormat()
-    )
+    bins = MultiFASTADirectoryFormat()
     for samp, props in sample_set.items():
         _process_sample(samp, props, mode, common_args, str(bins))
 

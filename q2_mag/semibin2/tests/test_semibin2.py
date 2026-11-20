@@ -20,6 +20,7 @@ from q2_types.per_sample_sequences import (
     MultiFASTADirectoryFormat,
 )
 from qiime2 import Artifact
+from q2_types.feature_data_mag import MAGSequencesDirFmt
 from qiime2.plugin.testing import TestPluginBase
 from rachis.sdk import Context
 
@@ -180,7 +181,6 @@ class TestSemibin2(TestPluginBase):
                     "single_easy_bin",
                     args,
                     str(mock_bins),
-                    separator="",
                 ),
                 call(
                     "samp2",
@@ -191,7 +191,6 @@ class TestSemibin2(TestPluginBase):
                     "single_easy_bin",
                     args,
                     str(mock_bins),
-                    separator="",
                 ),
             ]
         )
@@ -465,7 +464,6 @@ class TestSemibin2(TestPluginBase):
             "multi_easy_bin",
             args + ["--separator", ";"],
             str(mock_bins),
-            separator=";",
         )
         self.assertEqual(obs_bins, mock_bins)
         self.assertDictEqual(obs_map, {bin_id: ["sample1;contig1", "sample2;contig1"]})
@@ -571,7 +569,6 @@ class TestSemibin2(TestPluginBase):
             "single_easy_bin",
             args,
             str(mock_bins),
-            separator="",
         )
         self.assertEqual(obs_bins, mock_bins)
         self.assertDictEqual(obs_map, {bin_id: ["pooled:contig1", "pooled:contig2"]})
@@ -641,6 +638,47 @@ class TestSemibin2(TestPluginBase):
             exclude_ids=True,
         )
         self.assertTupleEqual(("mags", contig_map, "unbinned_contigs"), obs)
+
+    @patch("q2_mag.semibin2.semibin2._run_semibin2")
+    def test_bin_contigs_semibin2_coassembly_output(self, p1):
+        self.package = "q2_mag.tests"
+        contigs = Artifact.import_data(
+            "FeatureData[Contig % Properties('coassembled')]",
+            self.get_data_path("coassembled-contigs"),
+        )
+        maps = Artifact.import_data(
+            "SampleData[AlignmentMap % Properties('sorted', 'pooled')]",
+            self.get_data_path("coassembled-maps"),
+        )
+
+        with tempfile.TemporaryDirectory() as output:
+            bins_path = Path(output) / "bin" / "output_bins"
+            bins_path.mkdir(parents=True)
+            shutil.copy(
+                self.get_data_path("coassembled-contigs/pooled.fasta"),
+                bins_path / "SemiBin_0.fa",
+            )
+            p1.return_value = output
+
+            obs = self.plugin.methods["_bin_contigs_semibin2"](
+                contigs=contigs,
+                alignment_maps=maps,
+                binning_workflow="co-assembly",
+            )
+
+        self.assertEqual(str(obs.mags.type), "FeatureData[MAG]")
+        mags = obs.mags.view(MAGSequencesDirFmt)
+        fasta_files = list(mags.path.glob("*.fa"))
+        self.assertEqual(len(fasta_files), 1)
+        self.assertFalse((mags.path / "pooled").exists())
+        self.assertEqual(
+            fasta_files[0].read_text(),
+            Path(self.get_data_path("coassembled-contigs/pooled.fasta")).read_text(),
+        )
+        self.assertDictEqual(
+            obs.contig_map.view(dict),
+            {fasta_files[0].stem: ["pooled:contig1", "pooled:contig2"]},
+        )
 
 
 if __name__ == "__main__":
