@@ -140,7 +140,6 @@ def _get_sample_ids(
     """
     samples_found = set()
     separator = ""
-    samples_descending = sorted(expected_samples, key=len, reverse=True)
 
     (fasta_fp,) = contigs.sample_dict().values()  # Exactly 1 FASTA file is expected
     headers = [
@@ -148,9 +147,10 @@ def _get_sample_ids(
     ]
 
     if len(headers) == 0:
-        return (samples_found, separator)
+        return (samples_found, separator)  # No samples found; return early
 
     first_header = headers[0]
+    samples_descending = sorted(expected_samples, key=len, reverse=True)
 
     for sample_id in samples_descending:
         if first_header.startswith(sample_id):

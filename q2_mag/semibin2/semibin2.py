@@ -75,10 +75,23 @@ def _run_semibin2(samp_name, samp_props, loc, mode, common_args):
     return bins_dp
 
 
+def _add_sample_prefix(source: str, destination: str, samp_name: str, separator: str):
+    with open(source) as source, open(destination, "w") as destination:
+        for line in source:
+            if line.startswith(">"):
+                line = f">{samp_name}{separator}{line[1:]}"
+            destination.write(line)
+
+
 def _process_sample(samp_name, samp_props, mode, common_args, result_loc):
     with tempfile.TemporaryDirectory() as tmp:
         output_dp = _run_semibin2(samp_name, samp_props, tmp, mode, common_args)
-        bins_dp = os.path.join(output_dp, "bin/output_bins/")
+
+        bins_folder = "output_bins"
+        if mode == "multi_easy_bin":
+            bins_folder = "bins"
+            separator = common_args[common_args.index("--separator") + 1]
+        bins_dp = os.path.join(output_dp, "bin", bins_folder)
 
         all_outputs = glob.glob(os.path.join(bins_dp, "*.fa"))
         all_bins = [x for x in all_outputs if re.search(r"SemiBin\_[0-9]+\.fa$", x)]
@@ -87,8 +100,17 @@ def _process_sample(samp_name, samp_props, mode, common_args, result_loc):
         bin_dest_dir = os.path.join(str(result_loc), samp_name)
         os.makedirs(bin_dest_dir, exist_ok=True)
         for old_bin in all_bins:
+            if mode == "multi_easy_bin":
+                samp_name = os.path.basename(old_bin).rsplit("_SemiBin_", 1)[0]
+
+            bin_dest_dir = os.path.join(str(result_loc), samp_name)
+            os.makedirs(bin_dest_dir, exist_ok=True)
             new_bin = os.path.join(bin_dest_dir, f"{uuid4()}.fa")
-            shutil.move(old_bin, new_bin)
+
+            if mode == "multi_easy_bin":
+                _add_sample_prefix(old_bin, new_bin, samp_name, separator)
+            else:
+                shutil.move(old_bin, new_bin)
 
 
 def _bin_partition_contigs_semibin2(
