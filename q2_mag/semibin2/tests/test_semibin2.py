@@ -12,7 +12,7 @@ import tempfile
 import unittest
 import uuid
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import ANY, MagicMock, call, patch
 
 from q2_types.per_sample_sequences import (
     BAMDirFmt,
@@ -25,6 +25,7 @@ from qiime2.plugin.testing import TestPluginBase
 from rachis.sdk import Context
 
 from q2_mag.semibin2.semibin2 import (
+    _add_sample_prefix,
     _bin_contigs_semibin2,
     _bin_partition_contigs_semibin2,
     _filter_alignment_maps,
@@ -90,6 +91,69 @@ class TestSemibin2(TestPluginBase):
             ]
             exp_cmd.extend(fake_args)
             p1.assert_called_once_with(exp_cmd, check=True)
+
+    def test_add_sample_prefix(self):
+        self.package = "q2_mag.tests"
+        source = self.get_data_path("sequences/dna-sequences.fasta")
+
+        with tempfile.TemporaryDirectory() as fake_loc:
+            destination = os.path.join(fake_loc, "prefixed.fa")
+
+            _add_sample_prefix(source, destination, "sample1", ";")
+
+            obs = Path(destination).read_text()
+            exp = (
+                ">sample1;NZ_00000000.1_contig1\n"
+                "ATGTTTCCAGATGCAATGCGTGGGCACTG\n"
+                ">sample1;NZ_00000000.1_contig2\n"
+                "TTGACGTCAGTGAAAACCATGCAGTGTTGACGTCAGT\n"
+            )
+            self.assertEqual(exp, obs)
+
+    @patch("q2_mag.semibin2.semibin2.uuid4")
+    @patch("q2_mag.semibin2.semibin2._run_semibin2")
+    def test_process_sample_multi_sample(self, p1, p2):
+        self.package = "q2_mag.tests"
+        source = self.get_data_path("sequences/dna-sequences.fasta")
+        fake_props = {
+            "map": ["some/where/sample_one.bam", "some/where/sample2.bam"],
+            "contigs": "some/where/pooled.fasta",
+        }
+        fake_args = ["--epochs", "16", "--separator", ";"]
+        p2.side_effect = [
+            uuid.UUID("93fa393d-504a-4257-8a38-931af0cc4b1f"),
+            uuid.UUID("a69ab2c1-b23a-400f-be45-7dfc35bf343c"),
+        ]
+
+        with tempfile.TemporaryDirectory() as fake_loc:
+            p1.return_value = os.path.join(fake_loc, "output")
+            bins_dp = os.path.join(fake_loc, "output", "bin", "bins")
+            os.makedirs(bins_dp)
+
+            # copy expected bins to the multi-sample output location
+            shutil.copy(source, os.path.join(bins_dp, "sample_one_SemiBin_0.fa"))
+            shutil.copy(source, os.path.join(bins_dp, "sample2_SemiBin_0.fa"))
+
+            _process_sample("pooled", fake_props, "multi_easy_bin", fake_args, fake_loc)
+
+            obs_bins = glob.glob(os.path.join(fake_loc, "sample*", "*.fa"))
+            exp_bins = {
+                "93fa393d-504a-4257-8a38-931af0cc4b1f.fa",
+                "a69ab2c1-b23a-400f-be45-7dfc35bf343c.fa",
+            }
+            self.assertSetEqual(exp_bins, {os.path.basename(fp) for fp in obs_bins})
+            self.assertSetEqual(
+                {"sample_one", "sample2"},
+                {os.path.basename(os.path.dirname(fp)) for fp in obs_bins},
+            )
+            for bin_fp in obs_bins:
+                sample = os.path.basename(os.path.dirname(bin_fp))
+                exp = Path(source).read_text().replace(">", f">{sample};")
+                self.assertEqual(exp, Path(bin_fp).read_text())
+
+            p1.assert_called_once_with(
+                "pooled", fake_props, ANY, "multi_easy_bin", fake_args
+            )
 
     @patch("tempfile.TemporaryDirectory")
     @patch("q2_mag.semibin2.semibin2.uuid4")
