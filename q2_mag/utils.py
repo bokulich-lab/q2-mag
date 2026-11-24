@@ -107,7 +107,7 @@ def _get_separator(
     Returns:
         str: The separator character following the sample ID.
     """
-    if len(header_id) < len(sample_id):
+    if len(header_id) <= len(sample_id):
         raise AssertionError("Found sample ID but no separator found in contig header.")
 
     separator = header_id[len(sample_id)]
@@ -126,7 +126,8 @@ def _get_sample_ids(
 ) -> tuple[set[str], str]:
     """Returns a 2-sized tuple where the first item is a set of sample IDs found within
     the provided contigs, and the second item is the character separating the sample ID
-    and the contig ID. FASTA records are expected to have the following format:
+    and the contig ID. Exactly 1 FASTA file is expected in the contigs. FASTA headers
+    are expected to use the following format:
 
         <sample_id><separator><contig_id>
 
@@ -137,35 +138,34 @@ def _get_sample_ids(
     Returns:
         tuple[set[str], str]: _description_
     """
-    fasta_fps = contigs.sample_dict().values()
-    headers = []
-    n_samples = len(expected_samples)
     samples_found = set()
     separator = ""
-    first_header = True
+    samples_descending = sorted(expected_samples, key=len, reverse=True)
 
-    for fasta_fp in fasta_fps:
-        for contig in skbio.io.read(fasta_fp, format="fasta"):
-            header_id = contig.metadata["id"]
-            headers.append(header_id)
+    (fasta_fp,) = contigs.sample_dict().values()  # Exactly 1 FASTA file is expected
+    headers = [
+        contig.metadata["id"] for contig in skbio.io.read(fasta_fp, format="fasta")
+    ]
 
-            # We expected Sample IDs to be ordered. We therefore, use the last matching
-            # sample ID instead of iterating over a fixed list.
-            i = 0
-            j = 0
+    if len(headers) == 0:
+        return (samples_found, separator)
 
-            while i != n_samples:
-                current_sample = expected_samples[j]
+    first_header = headers[0]
 
-                if header_id.startswith(current_sample):
-                    if first_header:
-                        separator = _get_separator(header_id, current_sample)
-                        first_header = False
-                    if current_sample not in samples_found:
-                        samples_found.add(current_sample)
-                else:
-                    j += 1 if j <= n_samples else 0
-                i += 1
+    for sample_id in samples_descending:
+        if first_header.startswith(sample_id):
+            separator = _get_separator(first_header, sample_id)
+            break
+
+    if not separator:
+        raise ValueError(
+            f"The first contig header, {first_header}, does not match any "
+            f"alignment-map sample. Expected sample names: "
+            f"{', '.join(samples_descending)}."
+        )
+
+    for header in headers:
+        samples_found.add(header.split(separator, 1)[0])
 
     return (samples_found, separator)
 
