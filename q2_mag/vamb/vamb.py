@@ -289,7 +289,7 @@ def bin_contigs_vamb(
     taxonomy: pd.DataFrame = None,
     # multi_split: bool = False,
     min_contig_len: int = 2000,
-    minfasta: int = 2000,
+    minfasta: int = 100000,
     no_predictor: bool = False,
     threads: int = 8,
     seed: int | None = None,
