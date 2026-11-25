@@ -221,7 +221,7 @@ def bin_contigs_semibin2(
     elif contigs.type <= FeatureData[Contig % Properties("coassembled")]:
         if (
             not alignment_maps.type
-            <= SampleData[AlignmentMap % Properties("sorted", "pooled")]
+            <= SampleData[AlignmentMap % Properties("sorted", "coassembled")]
         ):
             raise ValueError(
                 "You provided pooled contigs but alignment maps of the type "
