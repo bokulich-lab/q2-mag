@@ -711,7 +711,7 @@ class TestSemibin2(TestPluginBase):
             self.get_data_path("coassembled-contigs"),
         )
         maps = Artifact.import_data(
-            "SampleData[AlignmentMap % Properties('sorted', 'pooled')]",
+            "SampleData[AlignmentMap % Properties('contigs', 'sorted', 'pooled')]",
             self.get_data_path("coassembled-maps"),
         )
 
@@ -730,7 +730,9 @@ class TestSemibin2(TestPluginBase):
                 binning_workflow="co-assembly",
             )
 
-        self.assertEqual(str(obs.mags.type), "FeatureData[MAG]")
+        self.assertEqual(
+            str(obs.mags.type), "FeatureData[MAG % Properties('coassembled')]"
+        )
         mags = obs.mags.view(MAGSequencesDirFmt)
         fasta_files = list(mags.path.glob("*.fa"))
         self.assertEqual(len(fasta_files), 1)

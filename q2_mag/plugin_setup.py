@@ -741,15 +741,15 @@ T_contigs_in, T_mags_out, T_unbinned_out = TypeMap(
     {
         SampleData[Contigs]: (SampleData[MAGs], SampleData[Contigs]),
         FeatureData[Contig % Properties("coassembled", "pooled")]: (
-            FeatureData[MAG],
+            FeatureData[MAG % Properties("coassembled", "pooled")],
             FeatureData[Contig],
         ),
         FeatureData[Contig % Properties("pooled")]: (
-            SampleData[MAGs],
+            SampleData[MAGs % Properties("pooled")],
             SampleData[Contigs],
         ),
         FeatureData[Contig % Properties("coassembled")]: (
-            FeatureData[MAG],
+            FeatureData[MAG % Properties("coassembled")],
             FeatureData[Contig],
         ),
     }
