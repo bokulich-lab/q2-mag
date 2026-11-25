@@ -542,7 +542,7 @@ class TestSemibin2(TestPluginBase):
             self.get_data_path("pooled-contigs/colon-separator"),
         )
         maps = Artifact.import_data(
-            "SampleData[AlignmentMap % Properties('sorted', 'pooled')]",
+            "SampleData[AlignmentMap % Properties('contigs', 'sorted', 'pooled')]",
             self.get_data_path("pooled-maps/colon-separator"),
         )
         contig_map = Artifact.import_data(
@@ -647,7 +647,7 @@ class TestSemibin2(TestPluginBase):
             self.get_data_path("coassembled-contigs"),
         )
         maps = Artifact.import_data(
-            "SampleData[AlignmentMap % Properties('sorted', 'pooled')]",
+            "SampleData[AlignmentMap % Properties('contigs', 'sorted', 'coassembled')]",
             self.get_data_path("coassembled-maps"),
         )
         contig_map = Artifact.import_data(
