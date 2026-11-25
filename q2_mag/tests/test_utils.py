@@ -5,9 +5,12 @@
 #
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
+import io
 import shutil
+import warnings
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 import pandas as pd
 from q2_types.feature_data import DNASequencesDirectoryFormat
@@ -17,15 +20,18 @@ from q2_types.per_sample_sequences import (
     MultiMAGSequencesDirFmt,
 )
 from qiime2.plugin.testing import TestPluginBase
+from skbio.io import FormatIdentificationWarning
 
 from q2_types.feature_data_mag import MAGSequencesDirFmt
 from ..utils import (
+    EXTERNAL_CMD_WARNING,
     _align_samples_before_binning,
     _construct_param,
     _get_sample_ids,
     _get_separator,
     _process_common_input_params,
     get_feature_lengths,
+    run_command,
 )
 
 
@@ -83,6 +89,43 @@ class TestUtils(TestPluginBase):
                 ],
                 "length": [29, 37],
             }
+        )
+
+    @patch("sys.stdout", new_callable=io.StringIO)
+    @patch("subprocess.run")
+    def test_run_command_verbose(self, p1, p2):
+        fake_cmd = ["samtools", "view", "/some/where/sample1_alignment.bam"]
+
+        run_command(fake_cmd)
+
+        exp_stdout = (
+            f"{EXTERNAL_CMD_WARNING}\n\n"
+            "Command: samtools view /some/where/sample1_alignment.bam\n\n"
+        )
+        self.assertEqual(p2.getvalue(), exp_stdout)
+        p1.assert_called_once_with(fake_cmd, check=True)
+
+    @patch("sys.stdout", new_callable=io.StringIO)
+    @patch("subprocess.run")
+    def test_run_command_with_env(self, p1, p2):
+        fake_cmd = ["metabat2", "-i", "/some/where/sample1_contigs.fasta"]
+        fake_env = {"OMP_NUM_THREADS": "2"}
+        fake_loc = "/new/location"
+
+        run_command(fake_cmd, env=fake_env, verbose=False, cwd=fake_loc)
+
+        self.assertEqual(p2.getvalue(), "")
+        p1.assert_called_once_with(fake_cmd, env=fake_env, check=True, cwd=fake_loc)
+
+    @patch("subprocess.run")
+    def test_run_command_pipe(self, p1):
+        fake_cmd = ["samtools", "view", "-H", "/some/where/sample1_alignment.bam"]
+
+        obs = run_command(fake_cmd, verbose=False, pipe=True)
+
+        self.assertIs(obs, p1.return_value)
+        p1.assert_called_once_with(
+            fake_cmd, env=None, check=True, capture_output=True, text=True
         )
 
     def test_construct_param_simple(self):
@@ -242,6 +285,30 @@ class TestUtils(TestPluginBase):
 
         self.assertSetEqual(obs, {"pooled"})
         self.assertEqual(separator, ":")
+
+    def test_get_sample_ids_empty_contigs(self):
+        with TemporaryDirectory() as contigs_path:
+            (Path(contigs_path) / "sample1_contigs.fasta").touch()
+            contigs = ContigSequencesDirFmt(contigs_path, mode="r")
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", FormatIdentificationWarning)
+                obs, obs_separator = _get_sample_ids(contigs, ["sample1"])
+
+        self.assertSetEqual(obs, set())
+        self.assertEqual(obs_separator, "")
+
+    def test_get_sample_ids_unmatched_first_header(self):
+        contigs = ContigSequencesDirFmt(
+            self.get_data_path("pooled-contigs/colon-separator"), mode="r"
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            r"The first contig header, sample1:contig1, does not match any "
+            r"alignment-map sample\. Expected sample names: sample3, sample4\.",
+        ):
+            _get_sample_ids(contigs, ["sample3", "sample4"])
 
     def test_align_samples_before_binning_multi_sample(self):
         for directory, separator in (
