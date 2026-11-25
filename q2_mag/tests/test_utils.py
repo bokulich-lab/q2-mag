@@ -5,8 +5,12 @@
 #
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
+import io
+import shutil
+import warnings
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 import pandas as pd
 from q2_types.feature_data import DNASequencesDirectoryFormat
@@ -16,13 +20,18 @@ from q2_types.per_sample_sequences import (
     MultiMAGSequencesDirFmt,
 )
 from qiime2.plugin.testing import TestPluginBase
+from skbio.io import FormatIdentificationWarning
 
 from q2_types.feature_data_mag import MAGSequencesDirFmt
 from ..utils import (
+    EXTERNAL_CMD_WARNING,
     _align_samples_before_binning,
     _construct_param,
+    _get_sample_ids,
+    _get_separator,
     _process_common_input_params,
     get_feature_lengths,
+    run_command,
 )
 
 
@@ -80,6 +89,43 @@ class TestUtils(TestPluginBase):
                 ],
                 "length": [29, 37],
             }
+        )
+
+    @patch("sys.stdout", new_callable=io.StringIO)
+    @patch("subprocess.run")
+    def test_run_command_verbose(self, p1, p2):
+        fake_cmd = ["samtools", "view", "/some/where/sample1_alignment.bam"]
+
+        run_command(fake_cmd)
+
+        exp_stdout = (
+            f"{EXTERNAL_CMD_WARNING}\n\n"
+            "Command: samtools view /some/where/sample1_alignment.bam\n\n"
+        )
+        self.assertEqual(p2.getvalue(), exp_stdout)
+        p1.assert_called_once_with(fake_cmd, check=True)
+
+    @patch("sys.stdout", new_callable=io.StringIO)
+    @patch("subprocess.run")
+    def test_run_command_with_env(self, p1, p2):
+        fake_cmd = ["metabat2", "-i", "/some/where/sample1_contigs.fasta"]
+        fake_env = {"OMP_NUM_THREADS": "2"}
+        fake_loc = "/new/location"
+
+        run_command(fake_cmd, env=fake_env, verbose=False, cwd=fake_loc)
+
+        self.assertEqual(p2.getvalue(), "")
+        p1.assert_called_once_with(fake_cmd, env=fake_env, check=True, cwd=fake_loc)
+
+    @patch("subprocess.run")
+    def test_run_command_pipe(self, p1):
+        fake_cmd = ["samtools", "view", "-H", "/some/where/sample1_alignment.bam"]
+
+        obs = run_command(fake_cmd, verbose=False, pipe=True)
+
+        self.assertIs(obs, p1.return_value)
+        p1.assert_called_once_with(
+            fake_cmd, env=None, check=True, capture_output=True, text=True
         )
 
     def test_construct_param_simple(self):
@@ -170,12 +216,17 @@ class TestUtils(TestPluginBase):
                 bam = Path(maps_path) / bam_name
                 contig.touch()
                 bam.touch()
-                expected[sample] = {"contigs": str(contig), "map": str(bam)}
+                expected[sample] = {"contigs": str(contig), "map": [str(bam)]}
 
             contigs = ContigSequencesDirFmt(contigs_path, mode="r")
             maps = BAMDirFmt(maps_path, mode="r")
 
-            self.assertDictEqual(_align_samples_before_binning(contigs, maps), expected)
+            obs, separator = _align_samples_before_binning(
+                contigs, maps, "single-sample"
+            )
+
+            self.assertDictEqual(obs, expected)
+            self.assertEqual(separator, "")
 
     def test_align_samples_before_binning_mismatched_ids(self):
         contigs = ContigSequencesDirFmt(self.get_data_path("contigs"), mode="r")
@@ -188,11 +239,156 @@ class TestUtils(TestPluginBase):
                 with self.assertRaisesRegex(
                     Exception,
                     "Contigs and alignment maps should belong to the same sample "
-                    "set. You provided contigs for samples: sample1,sample2 but "
-                    f"maps for samples: {','.join(bam_samples)}\\. Please check "
+                    "set. You provided contigs for samples: sample1, sample2 but "
+                    f"maps for samples: {', '.join(bam_samples)}\\. Please check "
                     "your inputs and try again.",
                 ):
-                    _align_samples_before_binning(contigs, maps)
+                    _align_samples_before_binning(contigs, maps, "single-sample")
+
+    def test_get_separator(self):
+        for separator in (":", ";", "_", "|", ".", "C"):
+            with self.subTest(separator=separator):
+                obs = _get_separator(f"sample1{separator}contig1", "sample1")
+                self.assertEqual(obs, separator)
+
+    def test_get_separator_invalid(self):
+        with self.assertRaisesRegex(AssertionError, "! is not a valid separator"):
+            _get_separator("sample1!contig1", "sample1")
+
+    def test_get_separator_header_too_short(self):
+        with self.assertRaisesRegex(
+            AssertionError, "no separator found in contig header"
+        ):
+            _get_separator("sample", "sample1")
+
+    def test_get_sample_ids_pooled(self):
+        for directory, separator in (
+            ("colon-separator", ":"),
+            ("semicolon-separator", ";"),
+        ):
+            with self.subTest(separator=separator):
+                contigs = ContigSequencesDirFmt(
+                    self.get_data_path(f"pooled-contigs/{directory}"), mode="r"
+                )
+
+                obs, obs_separator = _get_sample_ids(contigs, ["sample1", "sample2"])
+
+                self.assertSetEqual(obs, {"sample1", "sample2"})
+                self.assertEqual(obs_separator, separator)
+
+    def test_get_sample_ids_coassembled(self):
+        contigs = ContigSequencesDirFmt(
+            self.get_data_path("coassembled-contigs"), mode="r"
+        )
+
+        obs, separator = _get_sample_ids(contigs, ["pooled"])
+
+        self.assertSetEqual(obs, {"pooled"})
+        self.assertEqual(separator, ":")
+
+    def test_get_sample_ids_empty_contigs(self):
+        with TemporaryDirectory() as contigs_path:
+            (Path(contigs_path) / "sample1_contigs.fasta").touch()
+            contigs = ContigSequencesDirFmt(contigs_path, mode="r")
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", FormatIdentificationWarning)
+                obs, obs_separator = _get_sample_ids(contigs, ["sample1"])
+
+        self.assertSetEqual(obs, set())
+        self.assertEqual(obs_separator, "")
+
+    def test_get_sample_ids_unmatched_first_header(self):
+        contigs = ContigSequencesDirFmt(
+            self.get_data_path("pooled-contigs/colon-separator"), mode="r"
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            r"The first contig header, sample1:contig1, does not match any "
+            r"alignment-map sample\. Expected sample names: sample3, sample4\.",
+        ):
+            _get_sample_ids(contigs, ["sample3", "sample4"])
+
+    def test_align_samples_before_binning_multi_sample(self):
+        for directory, separator in (
+            ("colon-separator", ":"),
+            ("semicolon-separator", ";"),
+        ):
+            with self.subTest(separator=separator):
+                contigs_path = self.get_data_path(f"pooled-contigs/{directory}")
+                maps_path = self.get_data_path(f"pooled-maps/{directory}")
+                contigs = ContigSequencesDirFmt(contigs_path, mode="r")
+                maps = BAMDirFmt(maps_path, mode="r")
+
+                obs, obs_separator = _align_samples_before_binning(
+                    contigs, maps, "multi-sample"
+                )
+
+                self.assertDictEqual(
+                    obs,
+                    {
+                        "pooled": {
+                            "contigs": str(Path(contigs_path) / "pooled_contigs.fa"),
+                            "map": [
+                                str(Path(maps_path) / "sample1.bam"),
+                                str(Path(maps_path) / "sample2.bam"),
+                            ],
+                        }
+                    },
+                )
+                self.assertEqual(obs_separator, separator)
+
+    def test_align_samples_before_binning_coassembly(self):
+        contigs_path = self.get_data_path("coassembled-contigs")
+        maps_path = self.get_data_path("coassembled-maps")
+        contigs = ContigSequencesDirFmt(contigs_path, mode="r")
+        maps = BAMDirFmt(maps_path, mode="r")
+
+        obs, separator = _align_samples_before_binning(contigs, maps, "co-assembly")
+
+        self.assertDictEqual(
+            obs,
+            {
+                "pooled": {
+                    "contigs": str(Path(contigs_path) / "pooled.fasta"),
+                    "map": [
+                        str(Path(maps_path) / "sample1.bam"),
+                        str(Path(maps_path) / "sample2.bam"),
+                    ],
+                }
+            },
+        )
+        self.assertEqual(separator, "")
+
+    def test_align_samples_before_binning_multi_sample_mismatched_ids(self):
+        contigs = ContigSequencesDirFmt(
+            self.get_data_path("pooled-contigs/colon-separator"), mode="r"
+        )
+        bam = self.get_data_path("pooled-maps/colon-separator/sample1.bam")
+        with TemporaryDirectory() as path:
+            for sample in ("sample1", "sample2", "sample3"):
+                shutil.copy(bam, Path(path) / f"{sample}.bam")
+            maps = BAMDirFmt(path, mode="r")
+
+            with self.assertRaisesRegex(
+                Exception,
+                "Contigs and alignment maps should belong to the same sample set",
+            ):
+                _align_samples_before_binning(contigs, maps, "multi-sample")
+
+    def test_align_samples_before_binning_invalid_workflow(self):
+        contigs = ContigSequencesDirFmt(
+            self.get_data_path("coassembled-contigs"), mode="r"
+        )
+        maps = BAMDirFmt(self.get_data_path("coassembled-maps"), mode="r")
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "Binning workflow must be one of single-sample, multi-sample, or "
+            "co-assembly. You provided: invalid.",
+        ):
+            _align_samples_before_binning(contigs, maps, "invalid")
 
     def test_get_feature_lengths_mag(self):
         self.get_feature_lengths_test_helper(

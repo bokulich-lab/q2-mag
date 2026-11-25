@@ -6,27 +6,32 @@
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
 import glob
-
-import shutil
-
 import os
+import shutil
 import tempfile
 import unittest
 import uuid
 from pathlib import Path
-from q2_types.per_sample_sequences import ContigSequencesDirFmt, BAMDirFmt
-from q2_types.per_sample_sequences import MultiFASTADirectoryFormat
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import ANY, MagicMock, call, patch
 
+from q2_types.per_sample_sequences import (
+    BAMDirFmt,
+    ContigSequencesDirFmt,
+    MultiFASTADirectoryFormat,
+)
+from qiime2 import Artifact
+from q2_types.feature_data_mag import MAGSequencesDirFmt
 from qiime2.plugin.testing import TestPluginBase
+from rachis.sdk import Context
 
 from q2_mag.semibin2.semibin2 import (
-    bin_contigs_semibin2,
+    _add_sample_prefix,
     _bin_contigs_semibin2,
     _bin_partition_contigs_semibin2,
     _filter_alignment_maps,
-    _run_semibin2,
     _process_sample,
+    _run_semibin2,
+    bin_contigs_semibin2,
 )
 
 
@@ -55,7 +60,7 @@ class TestSemibin2(TestPluginBase):
 
     @patch("subprocess.run")
     def test_run_semibin2_ok(self, p1):
-        fake_props = {"map": "/some/where/map.bam", "contigs": "/a/b/co.fa"}
+        fake_props = {"map": ["/some/where/map.bam"], "contigs": "/a/b/co.fa"}
         fake_args = [
             "--epochs",
             "16",
@@ -77,7 +82,7 @@ class TestSemibin2(TestPluginBase):
                 "--input-fasta",
                 fake_props["contigs"],
                 "--input-bam",
-                fake_props["map"],
+                *fake_props["map"],
                 "--output",
                 os.path.join(fake_loc, "samp1", "bin"),
                 "--compression",
@@ -86,6 +91,69 @@ class TestSemibin2(TestPluginBase):
             ]
             exp_cmd.extend(fake_args)
             p1.assert_called_once_with(exp_cmd, check=True)
+
+    def test_add_sample_prefix(self):
+        self.package = "q2_mag.tests"
+        source = self.get_data_path("sequences/dna-sequences.fasta")
+
+        with tempfile.TemporaryDirectory() as fake_loc:
+            destination = os.path.join(fake_loc, "prefixed.fa")
+
+            _add_sample_prefix(source, destination, "sample1", ";")
+
+            obs = Path(destination).read_text()
+            exp = (
+                ">sample1;NZ_00000000.1_contig1\n"
+                "ATGTTTCCAGATGCAATGCGTGGGCACTG\n"
+                ">sample1;NZ_00000000.1_contig2\n"
+                "TTGACGTCAGTGAAAACCATGCAGTGTTGACGTCAGT\n"
+            )
+            self.assertEqual(exp, obs)
+
+    @patch("q2_mag.semibin2.semibin2.uuid4")
+    @patch("q2_mag.semibin2.semibin2._run_semibin2")
+    def test_process_sample_multi_sample(self, p1, p2):
+        self.package = "q2_mag.tests"
+        source = self.get_data_path("sequences/dna-sequences.fasta")
+        fake_props = {
+            "map": ["some/where/sample_one.bam", "some/where/sample2.bam"],
+            "contigs": "some/where/pooled.fasta",
+        }
+        fake_args = ["--epochs", "16", "--separator", ";"]
+        p2.side_effect = [
+            uuid.UUID("93fa393d-504a-4257-8a38-931af0cc4b1f"),
+            uuid.UUID("a69ab2c1-b23a-400f-be45-7dfc35bf343c"),
+        ]
+
+        with tempfile.TemporaryDirectory() as fake_loc:
+            p1.return_value = os.path.join(fake_loc, "output")
+            bins_dp = os.path.join(fake_loc, "output", "bin", "bins")
+            os.makedirs(bins_dp)
+
+            # copy expected bins to the multi-sample output location
+            shutil.copy(source, os.path.join(bins_dp, "sample_one_SemiBin_0.fa"))
+            shutil.copy(source, os.path.join(bins_dp, "sample2_SemiBin_0.fa"))
+
+            _process_sample("pooled", fake_props, "multi_easy_bin", fake_args, fake_loc)
+
+            obs_bins = glob.glob(os.path.join(fake_loc, "sample*", "*.fa"))
+            exp_bins = {
+                "93fa393d-504a-4257-8a38-931af0cc4b1f.fa",
+                "a69ab2c1-b23a-400f-be45-7dfc35bf343c.fa",
+            }
+            self.assertSetEqual(exp_bins, {os.path.basename(fp) for fp in obs_bins})
+            self.assertSetEqual(
+                {"sample_one", "sample2"},
+                {os.path.basename(os.path.dirname(fp)) for fp in obs_bins},
+            )
+            for bin_fp in obs_bins:
+                sample = os.path.basename(os.path.dirname(bin_fp))
+                exp = Path(source).read_text().replace(">", f">{sample};")
+                self.assertEqual(exp, Path(bin_fp).read_text())
+
+            p1.assert_called_once_with(
+                "pooled", fake_props, ANY, "multi_easy_bin", fake_args
+            )
 
     @patch("tempfile.TemporaryDirectory")
     @patch("q2_mag.semibin2.semibin2.uuid4")
@@ -161,7 +229,7 @@ class TestSemibin2(TestPluginBase):
         p2.return_value = mock_bins
 
         obs_bins, obs_map = _bin_partition_contigs_semibin2(
-            contigs, maps, "single_easy_bin", args
+            contigs, maps, "single-sample", args
         )
 
         filter_alignment_maps.assert_called_once_with(contigs, maps)
@@ -172,7 +240,7 @@ class TestSemibin2(TestPluginBase):
                     "samp1",
                     {
                         "contigs": self.get_data_path("/contigs/samp1_contigs.fa"),
-                        "map": self.get_data_path("/maps/samp1_alignment.bam"),
+                        "map": [self.get_data_path("/maps/samp1_alignment.bam")],
                     },
                     "single_easy_bin",
                     args,
@@ -182,7 +250,7 @@ class TestSemibin2(TestPluginBase):
                     "samp2",
                     {
                         "contigs": self.get_data_path("/contigs/samp2_contigs.fa"),
-                        "map": self.get_data_path("/maps/samp2_alignment.bam"),
+                        "map": [self.get_data_path("/maps/samp2_alignment.bam")],
                     },
                     "single_easy_bin",
                     args,
@@ -238,7 +306,7 @@ class TestSemibin2(TestPluginBase):
         p2.return_value = mock_bins
 
         with self.assertRaisesRegex(ValueError, "No MAGs were formed"):
-            _bin_partition_contigs_semibin2(contigs, maps, "single_easy_bin", args)
+            _bin_partition_contigs_semibin2(contigs, maps, "single-sample", args)
 
     @patch("q2_mag.semibin2.semibin2._bin_partition_contigs_semibin2")
     @patch("q2_mag.semibin2.semibin2._process_common_input_params")
@@ -253,6 +321,7 @@ class TestSemibin2(TestPluginBase):
             contigs=contigs,
             alignment_maps=bams,
             epochs=10,
+            binning_workflow="single-sample",
         )
 
         p1.assert_called_once()
@@ -260,14 +329,16 @@ class TestSemibin2(TestPluginBase):
         p2.assert_called_once_with(
             contigs=contigs,
             alignment_maps=bams,
-            mode="single_easy_bin",
+            binning_workflow="single-sample",
             common_args=["--epochs", "16"],
         )
 
         assert result == ("bins", {"contigA": "bin1"})
 
     def test_bin_contigs_semibin2_pipeline(self):
-        contigs = ContigSequencesDirFmt(self.get_data_path("contigs"), mode="r")
+        contigs = Artifact.import_data(
+            "SampleData[Contigs]", self.get_data_path("contigs")
+        )
         alignment_maps = BAMDirFmt(self.get_data_path("maps"), mode="r")
         partitions = MagicMock()
         partitions.values.return_value = ["partition1", "partition2"]
@@ -328,8 +399,8 @@ class TestSemibin2(TestPluginBase):
         }
         self.assertListEqual(
             [
-                call("partition1", alignment_maps, **worker_params),
-                call("partition2", alignment_maps, **worker_params),
+                call("partition1", alignment_maps, "single-sample", **worker_params),
+                call("partition2", alignment_maps, "single-sample", **worker_params),
             ],
             bin_partition.call_args_list,
         )
@@ -343,6 +414,336 @@ class TestSemibin2(TestPluginBase):
         )
         self.assertTupleEqual(
             ("collated_mags", collated_contig_map, "unbinned_contigs"), obs
+        )
+
+    def test_bin_contigs_semibin2_coassembly_invalid_maps(self):
+        self.package = "q2_mag.tests"
+        contigs = Artifact.import_data(
+            "FeatureData[Contig % Properties('coassembled')]",
+            self.get_data_path("coassembled-contigs"),
+        )
+        alignment_maps = Artifact.import_data(
+            "SampleData[AlignmentMap % Properties('sorted')]",
+            self.get_data_path("coassembled-maps"),
+        )
+
+        with self.assertRaisesRegex(ValueError, "Expected maps of the type"):
+            bin_contigs_semibin2(
+                ctx=None,
+                contigs=contigs,
+                alignment_maps=alignment_maps,
+            )
+
+    def test_bin_contigs_semibin2_multi_sample_invalid_maps(self):
+        self.package = "q2_mag.tests"
+        contigs = Artifact.import_data(
+            "FeatureData[Contig % Properties('pooled')]",
+            self.get_data_path("pooled-contigs/colon-separator"),
+        )
+        alignment_maps = Artifact.import_data(
+            "SampleData[AlignmentMap % Properties('sorted')]",
+            self.get_data_path("pooled-maps/colon-separator"),
+        )
+
+        with self.assertRaisesRegex(ValueError, "Expected maps of the type"):
+            bin_contigs_semibin2(
+                ctx=None,
+                contigs=contigs,
+                alignment_maps=alignment_maps,
+            )
+
+    def test_bin_contigs_semibin2_unsupported_contigs(self):
+        self.package = "q2_mag.tests"
+        contigs = Artifact.import_data(
+            "FeatureData[Sequence]",
+            self.get_data_path("sequences/dna-sequences.fasta"),
+        )
+
+        with self.assertRaises(NotImplementedError):
+            bin_contigs_semibin2(
+                ctx=None,
+                contigs=contigs,
+                alignment_maps=None,
+            )
+
+    @patch("q2_mag.semibin2.semibin2._bin_partition_contigs_semibin2")
+    @patch("q2_mag.semibin2.semibin2._process_common_input_params")
+    def test_bin_contigs_semibin2_multi_sample_no_environment(self, p1, p2):
+        contigs = ContigSequencesDirFmt(self.get_data_path("contigs"), mode="r")
+        alignment_maps = BAMDirFmt(self.get_data_path("maps"), mode="r")
+        p1.return_value = ["--epochs", "15"]
+
+        _bin_contigs_semibin2(
+            contigs=contigs,
+            alignment_maps=alignment_maps,
+            binning_workflow="multi-sample",
+            environment="global",
+        )
+
+        p1.assert_called_once()
+        self.assertNotIn("environment", p1.call_args.kwargs["params"])
+        p2.assert_called_once_with(
+            contigs=contigs,
+            alignment_maps=alignment_maps,
+            binning_workflow="multi-sample",
+            common_args=["--epochs", "15"],
+        )
+
+    @patch("q2_mag.semibin2.semibin2.MultiFASTADirectoryFormat")
+    @patch("q2_mag.semibin2.semibin2._process_sample")
+    def test_bin_partition_contigs_semibin2_multi_sample(self, p1, p2):
+        self.package = "q2_mag.tests"
+        contigs = ContigSequencesDirFmt(
+            self.get_data_path("pooled-contigs/semicolon-separator"), mode="r"
+        )
+        maps = BAMDirFmt(
+            self.get_data_path("pooled-maps/semicolon-separator"), mode="r"
+        )
+        args = ["--epochs", "15"]
+
+        mock_bins = MultiFASTADirectoryFormat()
+        bin_id = "522775d4-b1c6-4ee3-8b47-cd990f17eb8b"
+        os.makedirs(mock_bins.path / "pooled")
+        shutil.copy(
+            contigs.path / "pooled_contigs.fa",
+            mock_bins.path / "pooled" / f"{bin_id}.fa",
+        )
+        p2.return_value = mock_bins
+
+        obs_bins, obs_map = _bin_partition_contigs_semibin2(
+            contigs, maps, "multi-sample", args
+        )
+
+        p1.assert_called_once_with(
+            "pooled",
+            {
+                "contigs": self.get_data_path(
+                    "pooled-contigs/semicolon-separator/pooled_contigs.fa"
+                ),
+                "map": [
+                    self.get_data_path("pooled-maps/semicolon-separator/sample1.bam"),
+                    self.get_data_path("pooled-maps/semicolon-separator/sample2.bam"),
+                ],
+            },
+            "multi_easy_bin",
+            args + ["--separator", ";"],
+            str(mock_bins),
+        )
+        self.assertEqual(obs_bins, mock_bins)
+        self.assertDictEqual(obs_map, {bin_id: ["sample1;contig1", "sample2;contig1"]})
+
+    @patch("q2_assembly.filter.filter_contigs")
+    @patch("q2_mag.semibin2.semibin2._bin_contigs_semibin2")
+    @patch("rachis.sdk.Context.get_action")
+    def test_bin_contigs_semibin2_pipeline_multi_sample(self, p1, p2, p3):
+        self.package = "q2_mag.tests"
+        contigs = Artifact.import_data(
+            "FeatureData[Contig % Properties('pooled')]",
+            self.get_data_path("pooled-contigs/colon-separator"),
+        )
+        maps = Artifact.import_data(
+            "SampleData[AlignmentMap % Properties('contigs', 'sorted', 'pooled')]",
+            self.get_data_path("pooled-maps/colon-separator"),
+        )
+        contig_map = Artifact.import_data(
+            "FeatureMap[MAGtoContigs]",
+            {
+                "522775d4-b1c6-4ee3-8b47-cd990f17eb8b": [
+                    "sample2:contig1",
+                    "sample1:contig1",
+                ],
+            },
+        )
+        p1.side_effect = [p2, p3]
+        p2.return_value = ("mags", contig_map)
+        p3.return_value = ("unbinned_contigs",)
+
+        obs = bin_contigs_semibin2(
+            Context(), contigs, maps, epochs=10, num_partitions=2
+        )
+
+        p1.assert_has_calls(
+            [
+                call("mag", "_bin_contigs_semibin2"),
+                call("assembly", "filter_contigs"),
+            ]
+        )
+        p2.assert_called_once_with(
+            contigs,
+            maps,
+            "multi-sample",
+            training_type=None,
+            orf_finder="fast-naive",
+            environment="global",
+            engine="auto",
+            sequencing_type="short_read",
+            minfasta_kbs=200,
+            no_recluster=False,
+            epochs=10,
+            batch_size=2048,
+            max_node=1,
+            max_edges=200,
+            ratio=0.05,
+            threads=1,
+            min_len=None,
+            ml_threshold=None,
+            random_seed=None,
+            debug=False,
+        )
+        p3.assert_called_once_with(
+            contigs,
+            on="contig",
+            ids=["sample1:contig1", "sample2:contig1"],
+            exclude_ids=True,
+        )
+        self.assertTupleEqual(("mags", contig_map, "unbinned_contigs"), obs)
+
+    @patch("q2_mag.semibin2.semibin2.MultiFASTADirectoryFormat")
+    @patch("q2_mag.semibin2.semibin2._process_sample")
+    def test_bin_partition_contigs_semibin2_coassembly(self, p1, p2):
+        self.package = "q2_mag.tests"
+        contigs = ContigSequencesDirFmt(
+            self.get_data_path("coassembled-contigs"), mode="r"
+        )
+        maps = BAMDirFmt(self.get_data_path("coassembled-maps"), mode="r")
+        args = ["--epochs", "15"]
+
+        mock_bins = MultiFASTADirectoryFormat()
+        bin_id = "522775d4-b1c6-4ee3-8b47-cd990f17eb8b"
+        os.makedirs(mock_bins.path / "pooled")
+        shutil.copy(
+            contigs.path / "pooled.fasta",
+            mock_bins.path / "pooled" / f"{bin_id}.fa",
+        )
+        p2.return_value = mock_bins
+
+        obs_bins, obs_map = _bin_partition_contigs_semibin2(
+            contigs, maps, "co-assembly", args
+        )
+
+        p1.assert_called_once_with(
+            "pooled",
+            {
+                "contigs": self.get_data_path("coassembled-contigs/pooled.fasta"),
+                "map": [
+                    self.get_data_path("coassembled-maps/sample1.bam"),
+                    self.get_data_path("coassembled-maps/sample2.bam"),
+                ],
+            },
+            "single_easy_bin",
+            args,
+            str(mock_bins),
+        )
+        self.assertEqual(obs_bins, mock_bins)
+        self.assertDictEqual(obs_map, {bin_id: ["pooled:contig1", "pooled:contig2"]})
+
+    @patch("q2_assembly.filter.filter_contigs")
+    @patch("q2_mag.semibin2.semibin2._bin_contigs_semibin2")
+    @patch("rachis.sdk.Context.get_action")
+    def test_bin_contigs_semibin2_pipeline_coassembly(self, p1, p2, p3):
+        self.package = "q2_mag.tests"
+        contigs = Artifact.import_data(
+            "FeatureData[Contig % Properties('coassembled')]",
+            self.get_data_path("coassembled-contigs"),
+        )
+        maps = Artifact.import_data(
+            "SampleData[AlignmentMap % Properties('contigs', 'sorted', 'coassembled')]",
+            self.get_data_path("coassembled-maps"),
+        )
+        contig_map = Artifact.import_data(
+            "FeatureMap[MAGtoContigs]",
+            {
+                "522775d4-b1c6-4ee3-8b47-cd990f17eb8b": [
+                    "pooled:contig2",
+                    "pooled:contig1",
+                ],
+            },
+        )
+        p1.side_effect = [p2, p3]
+        p2.return_value = ("mags", contig_map)
+        p3.return_value = ("unbinned_contigs",)
+
+        obs = bin_contigs_semibin2(
+            Context(), contigs, maps, epochs=10, num_partitions=2
+        )
+
+        p1.assert_has_calls(
+            [
+                call("mag", "_bin_contigs_semibin2"),
+                call("assembly", "filter_contigs"),
+            ]
+        )
+        p2.assert_called_once_with(
+            contigs,
+            maps,
+            "co-assembly",
+            training_type=None,
+            orf_finder="fast-naive",
+            environment="global",
+            engine="auto",
+            sequencing_type="short_read",
+            minfasta_kbs=200,
+            no_recluster=False,
+            epochs=10,
+            batch_size=2048,
+            max_node=1,
+            max_edges=200,
+            ratio=0.05,
+            threads=1,
+            min_len=None,
+            ml_threshold=None,
+            random_seed=None,
+            debug=False,
+        )
+        p3.assert_called_once_with(
+            contigs,
+            on="contig",
+            ids=["pooled:contig1", "pooled:contig2"],
+            exclude_ids=True,
+        )
+        self.assertTupleEqual(("mags", contig_map, "unbinned_contigs"), obs)
+
+    @patch("q2_mag.semibin2.semibin2._run_semibin2")
+    def test_bin_contigs_semibin2_coassembly_output(self, p1):
+        self.package = "q2_mag.tests"
+        contigs = Artifact.import_data(
+            "FeatureData[Contig % Properties('coassembled')]",
+            self.get_data_path("coassembled-contigs"),
+        )
+        maps = Artifact.import_data(
+            "SampleData[AlignmentMap % Properties('contigs', 'sorted', 'pooled')]",
+            self.get_data_path("coassembled-maps"),
+        )
+
+        with tempfile.TemporaryDirectory() as output:
+            bins_path = Path(output) / "bin" / "output_bins"
+            bins_path.mkdir(parents=True)
+            shutil.copy(
+                self.get_data_path("coassembled-contigs/pooled.fasta"),
+                bins_path / "SemiBin_0.fa",
+            )
+            p1.return_value = output
+
+            obs = self.plugin.methods["_bin_contigs_semibin2"](
+                contigs=contigs,
+                alignment_maps=maps,
+                binning_workflow="co-assembly",
+            )
+
+        self.assertEqual(
+            str(obs.mags.type), "FeatureData[MAG % Properties('coassembled')]"
+        )
+        mags = obs.mags.view(MAGSequencesDirFmt)
+        fasta_files = list(mags.path.glob("*.fa"))
+        self.assertEqual(len(fasta_files), 1)
+        self.assertFalse((mags.path / "pooled").exists())
+        self.assertEqual(
+            fasta_files[0].read_text(),
+            Path(self.get_data_path("coassembled-contigs/pooled.fasta")).read_text(),
+        )
+        self.assertDictEqual(
+            obs.contig_map.view(dict),
+            {fasta_files[0].stem: ["pooled:contig1", "pooled:contig2"]},
         )
 
 

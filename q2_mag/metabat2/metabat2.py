@@ -35,7 +35,7 @@ def _estimate_depth(samp_name, samp_props, loc):
             "jgi_summarize_bam_contig_depths",
             "--outputDepth",
             depth_fp,
-            samp_props["map"],
+            *samp_props["map"],
         ],
         verbose=True,
     )
@@ -102,7 +102,9 @@ def _generate_contig_map(bins: MultiFASTADirectoryFormat) -> dict:
 def _bin_contigs_metabat(
     contigs: ContigSequencesDirFmt, alignment_maps: BAMDirFmt, common_args: list
 ) -> (MultiFASTADirectoryFormat, dict, ContigSequencesDirFmt):
-    sample_set = _align_samples_before_binning(contigs, alignment_maps)
+    sample_set, _ = _align_samples_before_binning(
+        contigs, alignment_maps, "single-sample"
+    )
 
     bins = MultiFASTADirectoryFormat()
     unbinned = ContigSequencesDirFmt()

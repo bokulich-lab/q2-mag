@@ -44,11 +44,11 @@ class TestVAMB(TestPluginBase):
         sample_set = {
             "samp1": {
                 "contigs": str(Path(contigs_path) / "samp1_contigs.fa"),
-                "map": str(Path(maps_path) / "samp1_alignment.bam"),
+                "map": [str(Path(maps_path) / "samp1_alignment.bam")],
             },
             "samp2": {
                 "contigs": str(Path(contigs_path) / "samp2_contigs.fa"),
-                "map": str(Path(maps_path) / "samp2_alignment.bam"),
+                "map": [str(Path(maps_path) / "samp2_alignment.bam")],
             },
         }
 
@@ -61,11 +61,11 @@ class TestVAMB(TestPluginBase):
         sample_set = {
             "samp1": {
                 "contigs": str(Path(contigs_path) / "samp1_contigs.fa"),
-                "map": str(Path(maps_path) / "samp2_alignment.bam"),
+                "map": [str(Path(maps_path) / "samp2_alignment.bam")],
             },
             "samp2": {
                 "contigs": str(Path(contigs_path) / "samp2_contigs.fa"),
-                "map": str(Path(maps_path) / "samp1_alignment.bam"),
+                "map": [str(Path(maps_path) / "samp1_alignment.bam")],
             },
         }
 
@@ -111,7 +111,7 @@ class TestVAMB(TestPluginBase):
 
     @patch("subprocess.run")
     def test_run_vamb_ok(self, p1):
-        fake_props = {"map": "/some/where/map.bam", "contigs": "/a/b/co.fa"}
+        fake_props = {"map": ["/some/where/map.bam"], "contigs": "/a/b/co.fa"}
         fake_args = ["--verbose", "--minfasta", "1000", "-m", "2000"]
 
         with tempfile.TemporaryDirectory() as fake_loc:
@@ -140,7 +140,7 @@ class TestVAMB(TestPluginBase):
 
     @patch("subprocess.run")
     def test_run_taxvamb_ok(self, p1):
-        fake_props = {"map": "/some/where/map.bam", "contigs": "/a/b/co.fa"}
+        fake_props = {"map": ["/some/where/map.bam"], "contigs": "/a/b/co.fa"}
         fake_args = ["--verbose", "--minfasta", "1000", "-m", "2000"]
         taxonomy_fp = self.get_data_path("/taxonomy/taxonomy.tsv")
         taxonomy_df = pd.read_csv(taxonomy_fp, sep="\t")
@@ -249,7 +249,7 @@ class TestVAMB(TestPluginBase):
                     "samp1",
                     {
                         "contigs": self.get_data_path("/contigs/samp1_contigs.fa"),
-                        "map": self.get_data_path("/maps/samp1_alignment.bam"),
+                        "map": [self.get_data_path("/maps/samp1_alignment.bam")],
                     },
                     "default",
                     False,
@@ -261,7 +261,7 @@ class TestVAMB(TestPluginBase):
                     "samp2",
                     {
                         "contigs": self.get_data_path("/contigs/samp2_contigs.fa"),
-                        "map": self.get_data_path("/maps/samp2_alignment.bam"),
+                        "map": [self.get_data_path("/maps/samp2_alignment.bam")],
                     },
                     "default",
                     False,
@@ -320,11 +320,11 @@ class TestVAMB(TestPluginBase):
         sample_set = {
             "samp1": {
                 "contigs": self.get_data_path("/contigs/samp1_contigs.fa"),
-                "map": self.get_data_path("/maps/samp1_alignment.bam"),
+                "map": [self.get_data_path("/maps/samp1_alignment.bam")],
             },
             "samp2": {
                 "contigs": self.get_data_path("/contigs/samp2_contigs.fa"),
-                "map": self.get_data_path("/maps/samp2_alignment.bam"),
+                "map": [self.get_data_path("/maps/samp2_alignment.bam")],
             },
         }
         p3.assert_called_once_with(taxonomy_df, sample_set, "contigs")

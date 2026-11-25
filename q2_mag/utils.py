@@ -11,6 +11,7 @@ from typing import List, Union
 
 import pandas as pd
 import skbio
+from q2_assembly._action_params import ALLOWED_SEPARATORS
 from q2_types.feature_data import DNASequencesDirectoryFormat
 
 from q2_types.feature_data_mag import MAGSequencesDirFmt
@@ -86,29 +87,136 @@ def colorify(string: str):
     return "%s%s%s" % ("\033[1;32m", string, "\033[0m")
 
 
+def _get_separator(
+    header_id: str,
+    sample_id: str,
+) -> str:
+    """Extract the separator separating the sample ID from the rest of the header. The
+    separator is a single character following the sample ID:
+
+        <sample_id><separator><contig_id>
+
+    Args:
+        header_id (str): Full header ID.
+        sample_id (str): Sample ID. Should be a subset of the full header ID.
+
+    Raises:
+        AssertionError: If no separator follows the sample ID or if the extracted
+            character is not a valid separator.
+
+    Returns:
+        str: The separator character following the sample ID.
+    """
+    if len(header_id) <= len(sample_id):
+        raise AssertionError("Found sample ID but no separator found in contig header.")
+
+    separator = header_id[len(sample_id)]
+
+    if separator not in ALLOWED_SEPARATORS:
+        raise AssertionError(
+            f"{separator} is not a valid separator. Must be one of: "
+            f"{", ".join(ALLOWED_SEPARATORS)}"
+        )
+
+    return separator
+
+
+def _get_sample_ids(
+    contigs: ContigSequencesDirFmt, expected_samples: list[str]
+) -> tuple[set[str], str]:
+    """Returns a 2-sized tuple where the first item is a set of sample IDs found within
+    the provided contigs, and the second item is the character separating the sample ID
+    and the contig ID. Exactly 1 FASTA file is expected in the contigs. FASTA headers
+    are expected to use the following format:
+
+        <sample_id><separator><contig_id>
+
+    Args:
+        contigs (ContigSequencesDirFmt): _description_
+        expected_samples (list[str]): _description_
+
+    Returns:
+        tuple[set[str], str]: _description_
+    """
+    samples_found = set()
+    separator = ""
+
+    (fasta_fp,) = contigs.sample_dict().values()  # Exactly 1 FASTA file is expected
+    headers = [
+        contig.metadata["id"] for contig in skbio.io.read(fasta_fp, format="fasta")
+    ]
+
+    if len(headers) == 0:
+        return (samples_found, separator)  # No samples found; return early
+
+    first_header = headers[0]
+    samples_descending = sorted(expected_samples, key=len, reverse=True)
+
+    for sample_id in samples_descending:
+        if first_header.startswith(sample_id):
+            separator = _get_separator(first_header, sample_id)
+            break
+
+    if not separator:
+        raise ValueError(
+            f"The first contig header, {first_header}, does not match any "
+            f"alignment-map sample. Expected sample names: "
+            f"{', '.join(samples_descending)}."
+        )
+
+    for header in headers:
+        samples_found.add(header.split(separator, 1)[0])
+
+    return (samples_found, separator)
+
+
 def _align_samples_before_binning(
     contigs: ContigSequencesDirFmt,
     alignment_maps: BAMDirFmt,
-) -> dict[str, dict[str, str]]:
-    """Validate that sample IDs match and pair each sample's FASTA and BAM paths."""
+    binning_workflow: str,
+) -> tuple[dict[str, dict[str, str | list[str]]], str]:
+    """Pair FASTA paths with BAM path lists and return the sample ID separator."""
+    if binning_workflow not in ("single-sample", "multi-sample", "co-assembly"):
+        raise ValueError(
+            "Binning workflow must be one of single-sample, multi-sample, or "
+            f"co-assembly. You provided: {binning_workflow}."
+        )
+
     contigs_by_sample = contigs.sample_dict()
     maps_by_sample = alignment_maps.file_dict()
-
     fasta_samples = contigs_by_sample.keys()
     bam_samples = maps_by_sample.keys()
+    separator = ""
 
-    if fasta_samples != bam_samples:
+    if binning_workflow == "multi-sample":
+        fasta_samples, separator = _get_sample_ids(contigs, list(bam_samples))
+
+    if binning_workflow != "co-assembly" and fasta_samples != bam_samples:
         raise Exception(
             "Contigs and alignment maps should belong to the same sample set. "
-            f'You provided contigs for samples: {",".join(fasta_samples)} '
-            f'but maps for samples: {",".join(bam_samples)}. Please check '
+            f'You provided contigs for samples: {", ".join(fasta_samples)} '
+            f'but maps for samples: {", ".join(bam_samples)}. Please check '
             "your inputs and try again."
         )
 
-    return {
-        sample: {"contigs": contig_path, "map": maps_by_sample[sample]}
-        for sample, contig_path in contigs_by_sample.items()
-    }
+    if binning_workflow == "single-sample":
+        return (
+            {
+                sample: {"contigs": contig_path, "map": [maps_by_sample[sample]]}
+                for sample, contig_path in contigs_by_sample.items()
+            },
+            separator,
+        )
+
+    return (
+        {
+            "pooled": {
+                "contigs": next(iter(contigs_by_sample.values())),
+                "map": list(maps_by_sample.values()),
+            }
+        },
+        separator,
+    )
 
 
 def get_feature_lengths(
