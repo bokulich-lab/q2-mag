@@ -130,7 +130,7 @@ def bin_contigs_metabat(
     no_add: bool = None,
     min_cv: int = None,
     min_cv_sum: int = None,
-    min_cls_size: int = None,
+    min_cls_size: int = 100000,
     num_threads: int = None,
     seed: int = None,
     debug: bool = None,
