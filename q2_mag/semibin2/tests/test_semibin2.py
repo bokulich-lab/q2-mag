@@ -313,7 +313,7 @@ class TestSemibin2(TestPluginBase):
             "environment": "global",
             "engine": "auto",
             "sequencing_type": "short_read",
-            "minfasta_kbs": 200,
+            "minfasta_kbs": 100,
             "no_recluster": False,
             "epochs": 10,
             "batch_size": 2048,
