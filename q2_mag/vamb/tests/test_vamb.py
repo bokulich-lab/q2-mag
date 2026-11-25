@@ -505,7 +505,7 @@ class TestVAMB(TestPluginBase):
             processing_func=_process_vamb_arg,
             params={
                 "min_contig_len": 2000,
-                "minfasta": 2000,
+                "minfasta": 100000,
                 "threads": 8,
                 "seed": None,
                 "no_predictor": False,
